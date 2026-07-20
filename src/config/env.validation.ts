@@ -32,35 +32,77 @@ function isPlaceholderSecret(value: string | undefined): boolean {
   );
 }
 
-function optionalBooleanTransform({
-  value,
-}: {
-  value: unknown;
-}): boolean | undefined {
+const BOOLEAN_ENV_KEYS = [
+  'AUTH_ALLOW_DEV_OTP_OUTPUT',
+  'AUTH_NEW_DEVICE_AUTO_APPROVE',
+  'AUTH_STRICT_FINGERPRINT',
+  'REDIS_ENABLED',
+  'QUEUE_ENABLED',
+  'FCM_ENABLED',
+  'APNS_ENABLED',
+  'EMAIL_ENABLED',
+  'WS_ENABLED',
+  'METRICS_ENABLED',
+  'TRUST_PROXY',
+  'COMPRESSION_ENABLED',
+  'ENABLE_SWAGGER',
+] as const;
+
+/**
+ * class-transformer `enableImplicitConversion` treats any non-empty string as
+ * truthy for boolean design:types, so `"false"` becomes `true`. Coerce env
+ * strings before plainToInstance so Railway/production values work.
+ */
+function parseEnvBooleanString(value: unknown): boolean | undefined {
   if (value === undefined || value === null || value === '') {
     return undefined;
   }
   if (typeof value === 'boolean') {
     return value;
   }
-  if (typeof value === 'string') {
-    return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());
+  if (typeof value === 'number') {
+    return value !== 0;
   }
-  return Boolean(value);
+  if (typeof value === 'string') {
+    const normalised = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalised)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'off'].includes(normalised)) {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function coerceEnvBooleans(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...config };
+  for (const key of BOOLEAN_ENV_KEYS) {
+    if (!(key in next)) {
+      continue;
+    }
+    const parsed = parseEnvBooleanString(next[key]);
+    if (parsed !== undefined) {
+      next[key] = parsed;
+    }
+  }
+  return next;
+}
+
+function optionalBooleanTransform({
+  value,
+}: {
+  value: unknown;
+}): boolean | undefined {
+  return parseEnvBooleanString(value);
 }
 
 function booleanWithDefault(defaultValue: boolean) {
   return ({ value }: { value: unknown }): boolean => {
-    if (value === undefined || value === null || value === '') {
-      return defaultValue;
-    }
-    if (typeof value === 'boolean') {
-      return value;
-    }
-    if (typeof value === 'string') {
-      return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());
-    }
-    return Boolean(value);
+    const parsed = parseEnvBooleanString(value);
+    return parsed === undefined ? defaultValue : parsed;
   };
 }
 
@@ -420,10 +462,14 @@ export class EnvironmentVariables {
 export function validateEnv(
   config: Record<string, unknown>,
 ): EnvironmentVariables {
-  const validated = plainToInstance(EnvironmentVariables, config, {
-    enableImplicitConversion: true,
-    exposeDefaultValues: true,
-  });
+  const validated = plainToInstance(
+    EnvironmentVariables,
+    coerceEnvBooleans(config),
+    {
+      enableImplicitConversion: true,
+      exposeDefaultValues: true,
+    },
+  );
 
   const errors = validateSync(validated, {
     skipMissingProperties: false,
@@ -475,6 +521,11 @@ export function validateEnv(
     if (validated.AUTH_ALLOW_DEV_OTP_OUTPUT === true) {
       throw new Error(
         'Environment validation failed: AUTH_ALLOW_DEV_OTP_OUTPUT must be disabled in staging/production',
+      );
+    }
+    if (validated.AUTH_NEW_DEVICE_AUTO_APPROVE === true) {
+      throw new Error(
+        'Environment validation failed: AUTH_NEW_DEVICE_AUTO_APPROVE must be disabled in staging/production',
       );
     }
   }

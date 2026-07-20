@@ -71,8 +71,60 @@ describe('validateEnv', () => {
       STORAGE_PROVIDER: 'local',
       MAX_IMAGE_SIZE_BYTES: 10485760,
       MAX_VIDEO_SIZE_BYTES: 104857600,
+      AUTH_ALLOW_DEV_OTP_OUTPUT: 'false',
+      AUTH_NEW_DEVICE_AUTO_APPROVE: 'false',
     });
 
     expect(validated.NODE_ENV).toBe('production');
+    expect(validated.AUTH_ALLOW_DEV_OTP_OUTPUT).toBe(false);
+    expect(validated.AUTH_NEW_DEVICE_AUTO_APPROVE).toBe(false);
+  });
+
+  it('does not treat string "false" as true in production (Railway env quirk)', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        PORT: '3000',
+        API_PREFIX: 'api/v1',
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/guardtrak',
+        JWT_ACCESS_SECRET: 'prod-access-secret-9f3a2c1b',
+        JWT_REFRESH_SECRET: 'prod-refresh-secret-8e2b1a0d',
+        JWT_ACCESS_EXPIRES_IN: '15m',
+        JWT_REFRESH_EXPIRES_IN: '7d',
+        CORS_ORIGINS: 'https://app.example.com',
+        LOG_LEVEL: 'warn',
+        RATE_LIMIT_TTL: '60000',
+        RATE_LIMIT_LIMIT: '100',
+        STORAGE_PROVIDER: 'local',
+        MAX_IMAGE_SIZE_BYTES: '10485760',
+        MAX_VIDEO_SIZE_BYTES: '104857600',
+        AUTH_ALLOW_DEV_OTP_OUTPUT: 'false',
+        AUTH_NEW_DEVICE_AUTO_APPROVE: 'false',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects AUTH_ALLOW_DEV_OTP_OUTPUT=true in production', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        PORT: 3000,
+        API_PREFIX: 'api/v1',
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/guardtrak',
+        JWT_ACCESS_SECRET: 'prod-access-secret-9f3a2c1b',
+        JWT_REFRESH_SECRET: 'prod-refresh-secret-8e2b1a0d',
+        JWT_ACCESS_EXPIRES_IN: '15m',
+        JWT_REFRESH_EXPIRES_IN: '7d',
+        CORS_ORIGINS: 'https://app.example.com',
+        LOG_LEVEL: 'warn',
+        RATE_LIMIT_TTL: 60000,
+        RATE_LIMIT_LIMIT: 100,
+        STORAGE_PROVIDER: 'local',
+        MAX_IMAGE_SIZE_BYTES: 10485760,
+        MAX_VIDEO_SIZE_BYTES: 104857600,
+        AUTH_ALLOW_DEV_OTP_OUTPUT: 'true',
+        AUTH_NEW_DEVICE_AUTO_APPROVE: 'false',
+      }),
+    ).toThrow(/AUTH_ALLOW_DEV_OTP_OUTPUT/);
   });
 });
