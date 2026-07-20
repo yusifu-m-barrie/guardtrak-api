@@ -124,6 +124,26 @@ export class AuthService {
         operatingSystemVersion: dto.operatingSystemVersion,
       });
       deviceId = device.id;
+
+      if (device.status === 'PENDING') {
+        await this.authAuditService.record({
+          organisationId: user.organisationId,
+          actorUserId: user.id,
+          action: AuditAction.SECURITY_EVENT,
+          entityType: 'Device',
+          entityId: device.id,
+          requestId: ctx.requestId,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          metadata: { reason: 'login_blocked_device_pending' },
+        });
+        throw new AppException(
+          'This device is pending administrator approval and cannot sign in yet',
+          HttpStatus.FORBIDDEN,
+          ErrorCode.AUTH_DEVICE_PENDING,
+          [{ field: 'deviceId', message: device.id, code: 'DEVICE_PENDING' }],
+        );
+      }
     }
 
     if (await this.passwordService.needsRehash(user.passwordHash)) {
@@ -277,6 +297,31 @@ export class AuthService {
       );
     }
     this.assertAccountCanAuthenticate(user);
+
+    if (current.deviceId) {
+      const device = await this.prisma.device.findUnique({
+        where: { id: current.deviceId },
+        select: { status: true },
+      });
+      if (
+        !device ||
+        device.status === 'BLOCKED' ||
+        device.status === 'REVOKED'
+      ) {
+        throw new AppException(
+          'This device is not permitted to refresh the session',
+          HttpStatus.FORBIDDEN,
+          ErrorCode.AUTH_DEVICE_BLOCKED,
+        );
+      }
+      if (device.status === 'PENDING') {
+        throw new AppException(
+          'This device is pending administrator approval',
+          HttpStatus.FORBIDDEN,
+          ErrorCode.AUTH_DEVICE_PENDING,
+        );
+      }
+    }
 
     const rotated = await this.sessionService.rotate({
       current,
@@ -598,6 +643,31 @@ export class AuthService {
         HttpStatus.UNAUTHORIZED,
         ErrorCode.AUTH_SESSION_REVOKED,
       );
+    }
+
+    if (session.deviceId) {
+      const device = await this.prisma.device.findUnique({
+        where: { id: session.deviceId },
+        select: { status: true },
+      });
+      if (
+        !device ||
+        device.status === 'BLOCKED' ||
+        device.status === 'REVOKED'
+      ) {
+        throw new AppException(
+          'This device is not permitted',
+          HttpStatus.FORBIDDEN,
+          ErrorCode.AUTH_DEVICE_BLOCKED,
+        );
+      }
+      if (device.status === 'PENDING') {
+        throw new AppException(
+          'This device is pending administrator approval',
+          HttpStatus.FORBIDDEN,
+          ErrorCode.AUTH_DEVICE_PENDING,
+        );
+      }
     }
 
     return {

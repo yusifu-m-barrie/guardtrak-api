@@ -81,11 +81,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception &&
         typeof exception === 'object' &&
         'code' in exception &&
-        typeof (exception as { code: unknown }).code === 'string'
+        typeof exception.code === 'string'
           ? (exception as { code: string }).code
           : '';
-      const detail =
-        exception instanceof Error ? exception.message : undefined;
+      const detail = exception instanceof Error ? exception.message : undefined;
       this.logger.error(
         `[${requestId}] ${request.method} ${request.url} -> ${status} ${code}${
           prismaCode ? ` prisma=${prismaCode}` : ''

@@ -47,4 +47,12 @@ Railway / Docker liveness: `GET /api/v1/health/live`
 
 ## Devices
 
-With `AUTH_NEW_DEVICE_AUTO_APPROVE=false`, new devices are stored as `PENDING` but can still receive tokens today. Approve devices via admin device APIs for production trust. Enforcing hard block on PENDING is tracked as a remaining hardening item.
+With `AUTH_NEW_DEVICE_AUTO_APPROVE=false`, new devices are created as `PENDING` and **login does not issue tokens** (`AUTH_DEVICE_PENDING`).
+
+Approve for demo (Railway Postgres query or shell):
+
+```sql
+UPDATE "Device" SET status = 'ACTIVE', "trustedAt" = NOW() WHERE status = 'PENDING';
+```
+
+Or use admin device APIs (`PATCH /devices/:id/status` with `device:approve`).
