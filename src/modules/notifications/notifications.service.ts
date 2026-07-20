@@ -180,6 +180,17 @@ export class NotificationsService {
     return { unreadCount: count };
   }
 
+  async getById(user: RequestUser, id: string) {
+    const organisationId = requireOrganisationId(user);
+    const row = await this.prisma.notification.findFirst({
+      where: { id, organisationId, recipientUserId: user.id },
+    });
+    if (!row) {
+      tenantNotFound(ErrorCode.NOTIFICATION_NOT_FOUND);
+    }
+    return toNotificationResponse(row);
+  }
+
   async markRead(user: RequestUser, id: string) {
     const organisationId = requireOrganisationId(user);
     const row = await this.prisma.notification.findFirst({

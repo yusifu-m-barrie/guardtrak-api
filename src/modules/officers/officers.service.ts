@@ -36,6 +36,7 @@ import type { CreateOfficerDto } from './dto/create-officer.dto';
 import type { ListOfficersQueryDto } from './dto/list-officers-query.dto';
 import type { UpdateOfficerDto } from './dto/update-officer.dto';
 import type { UpdateOfficerEmploymentStatusDto } from './dto/update-officer-employment-status.dto';
+import type { UpdateOfficerSelfDto } from './dto/update-officer-self.dto';
 import {
   mapOfficerDetail,
   mapOfficerMe,
@@ -235,6 +236,96 @@ export class OfficersService {
     }
 
     return mapOfficerMe(profile);
+  }
+
+  async updateMe(
+    actor: RequestUser,
+    dto: UpdateOfficerSelfDto,
+    audit: AuditContext,
+  ) {
+    const organisationId = requireOrganisationId(actor);
+    const existing = await this.prisma.officerProfile.findFirst({
+      where: {
+        organisationId,
+        userId: actor.id,
+        deletedAt: null,
+      },
+    });
+
+    if (!existing) {
+      tenantNotFound(ErrorCode.OFFICER_NOT_FOUND);
+    }
+
+    const userData: Prisma.UserUpdateInput = {};
+    if (dto.email !== undefined) {
+      userData.email = normalizeEmail(dto.email) ?? null;
+    }
+    if (dto.phone !== undefined) {
+      userData.phone = normalizePhone(dto.phone) ?? null;
+    }
+    if (dto.avatarUrl !== undefined) {
+      userData.avatarUrl = trimOrUndefined(dto.avatarUrl) ?? null;
+    }
+
+    const profileData: Prisma.OfficerProfileUpdateInput = {};
+    if (dto.emergencyContactName !== undefined) {
+      profileData.emergencyContactName =
+        trimOrUndefined(dto.emergencyContactName) ?? null;
+    }
+    if (dto.emergencyContactPhone !== undefined) {
+      profileData.emergencyContactPhone =
+        normalizePhone(dto.emergencyContactPhone) ?? null;
+    }
+
+    if (
+      Object.keys(userData).length === 0 &&
+      Object.keys(profileData).length === 0
+    ) {
+      throw new AppException(
+        'No updatable fields provided',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.VALIDATION_ERROR,
+      );
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        if (Object.keys(userData).length > 0) {
+          await tx.user.update({
+            where: { id: existing.userId },
+            data: userData,
+          });
+        }
+        if (Object.keys(profileData).length > 0) {
+          await tx.officerProfile.update({
+            where: { id: existing.id },
+            data: profileData,
+          });
+        }
+      });
+
+      await this.authAuditService.record({
+        organisationId,
+        actorUserId: actor.id,
+        action: AuditAction.UPDATE,
+        entityType: 'OfficerProfile',
+        entityId: existing.id,
+        requestId: audit.requestId,
+        ipAddress: audit.ipAddress,
+        userAgent: audit.userAgent,
+        metadata: {
+          selfUpdate: true,
+          changedFields: [
+            ...Object.keys(userData),
+            ...Object.keys(profileData),
+          ],
+        },
+      });
+
+      return this.getMe(actor);
+    } catch (error) {
+      this.handleUpdateError(error);
+    }
   }
 
   async getById(actor: RequestUser, officerId: string) {

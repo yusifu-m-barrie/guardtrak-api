@@ -44,23 +44,6 @@ export class NotificationsController {
     return this.notificationsService.unreadCount(user);
   }
 
-  @Post('notifications/read-all')
-  @Permissions('notification:read:self')
-  @ApiOperation({ summary: 'Mark all notifications as read' })
-  markAllRead(@CurrentUser() user: RequestUser) {
-    return this.notificationsService.markAllRead(user);
-  }
-
-  @Post('notifications/:id/read')
-  @Permissions('notification:read:self')
-  @ApiOperation({ summary: 'Mark notification as read' })
-  markRead(
-    @CurrentUser() user: RequestUser,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.notificationsService.markRead(user, id);
-  }
-
   @Get('notifications/preferences')
   @Permissions('notification:update:self')
   @ApiOperation({ summary: 'Get notification preferences' })
@@ -76,6 +59,33 @@ export class NotificationsController {
     @Body() dto: UpdateNotificationPreferencesDto,
   ) {
     return this.notificationsService.updatePreferences(user, dto);
+  }
+
+  @Post('notifications/read-all')
+  @Permissions('notification:read:self')
+  @ApiOperation({ summary: 'Mark all notifications as read' })
+  markAllRead(@CurrentUser() user: RequestUser) {
+    return this.notificationsService.markAllRead(user);
+  }
+
+  @Get('notifications/:id')
+  @Permissions('notification:read:self')
+  @ApiOperation({ summary: 'Get one notification by ID' })
+  getById(
+    @CurrentUser() user: RequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.notificationsService.getById(user, id);
+  }
+
+  @Post('notifications/:id/read')
+  @Permissions('notification:read:self')
+  @ApiOperation({ summary: 'Mark notification as read' })
+  markRead(
+    @CurrentUser() user: RequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.notificationsService.markRead(user, id);
   }
 
   @Post('devices/push-token')

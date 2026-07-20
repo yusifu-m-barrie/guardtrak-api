@@ -27,6 +27,7 @@ import { CreateOfficerDto } from './dto/create-officer.dto';
 import { ListOfficersQueryDto } from './dto/list-officers-query.dto';
 import { UpdateOfficerDto } from './dto/update-officer.dto';
 import { UpdateOfficerEmploymentStatusDto } from './dto/update-officer-employment-status.dto';
+import { UpdateOfficerSelfDto } from './dto/update-officer-self.dto';
 import { OfficersService } from './officers.service';
 
 @ApiTags('officers')
@@ -61,6 +62,19 @@ export class OfficersController {
   @ApiOperation({ summary: 'Read current officer profile' })
   me(@CurrentUser() user: RequestUser) {
     return this.officersService.getMe(user);
+  }
+
+  @Patch('me')
+  @Permissions('profile:update:self')
+  @ApiOperation({
+    summary: 'Update current officer contact details and emergency contacts',
+  })
+  updateMe(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateOfficerSelfDto,
+    @Req() req: Request & { requestId?: string },
+  ) {
+    return this.officersService.updateMe(user, dto, this.auditContext(req));
   }
 
   @Get(':id')
