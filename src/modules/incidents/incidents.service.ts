@@ -52,6 +52,7 @@ import {
   toIncidentResponse,
   toIncidentStatusEventResponse,
 } from './mappers/incident.mapper';
+import { listIncidentCategories } from './incident-categories';
 
 const INCIDENT_SORT = [
   'reportedAtServer',
@@ -72,6 +73,10 @@ export class IncidentsService {
     private readonly notificationsService: NotificationsService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  listCategories() {
+    return listIncidentCategories();
+  }
 
   async create(
     user: RequestUser,

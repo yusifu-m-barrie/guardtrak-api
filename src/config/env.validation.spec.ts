@@ -69,6 +69,8 @@ describe('validateEnv', () => {
       RATE_LIMIT_TTL: 60000,
       RATE_LIMIT_LIMIT: 100,
       STORAGE_PROVIDER: 'local',
+      STORAGE_ALLOW_EPHEMERAL: 'true',
+      TRUST_PROXY: 'true',
       MAX_IMAGE_SIZE_BYTES: 10485760,
       MAX_VIDEO_SIZE_BYTES: 104857600,
       AUTH_ALLOW_DEV_OTP_OUTPUT: 'false',
@@ -78,6 +80,7 @@ describe('validateEnv', () => {
     expect(validated.NODE_ENV).toBe('production');
     expect(validated.AUTH_ALLOW_DEV_OTP_OUTPUT).toBe(false);
     expect(validated.AUTH_NEW_DEVICE_AUTO_APPROVE).toBe(false);
+    expect(validated.TRUST_PROXY).toBe(true);
   });
 
   it('does not treat string "false" as true in production (Railway env quirk)', () => {
@@ -96,12 +99,67 @@ describe('validateEnv', () => {
         RATE_LIMIT_TTL: '60000',
         RATE_LIMIT_LIMIT: '100',
         STORAGE_PROVIDER: 'local',
+        STORAGE_ALLOW_EPHEMERAL: 'true',
+        TRUST_PROXY: 'true',
         MAX_IMAGE_SIZE_BYTES: '10485760',
         MAX_VIDEO_SIZE_BYTES: '104857600',
         AUTH_ALLOW_DEV_OTP_OUTPUT: 'false',
         AUTH_NEW_DEVICE_AUTO_APPROVE: 'false',
       }),
     ).not.toThrow();
+  });
+
+  it('rejects local storage in production without STORAGE_ALLOW_EPHEMERAL', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        PORT: 3000,
+        API_PREFIX: 'api/v1',
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/guardtrak',
+        JWT_ACCESS_SECRET: 'prod-access-secret-9f3a2c1b',
+        JWT_REFRESH_SECRET: 'prod-refresh-secret-8e2b1a0d',
+        JWT_ACCESS_EXPIRES_IN: '15m',
+        JWT_REFRESH_EXPIRES_IN: '7d',
+        CORS_ORIGINS: 'https://app.example.com',
+        LOG_LEVEL: 'warn',
+        RATE_LIMIT_TTL: 60000,
+        RATE_LIMIT_LIMIT: 100,
+        STORAGE_PROVIDER: 'local',
+        TRUST_PROXY: true,
+        MAX_IMAGE_SIZE_BYTES: 10485760,
+        MAX_VIDEO_SIZE_BYTES: 104857600,
+        AUTH_ALLOW_DEV_OTP_OUTPUT: false,
+        AUTH_NEW_DEVICE_AUTO_APPROVE: false,
+      }),
+    ).toThrow(/STORAGE_ALLOW_EPHEMERAL/);
+  });
+
+  it('rejects TRUST_PROXY=false in production', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        PORT: 3000,
+        API_PREFIX: 'api/v1',
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/guardtrak',
+        JWT_ACCESS_SECRET: 'prod-access-secret-9f3a2c1b',
+        JWT_REFRESH_SECRET: 'prod-refresh-secret-8e2b1a0d',
+        JWT_ACCESS_EXPIRES_IN: '15m',
+        JWT_REFRESH_EXPIRES_IN: '7d',
+        CORS_ORIGINS: 'https://app.example.com',
+        LOG_LEVEL: 'warn',
+        RATE_LIMIT_TTL: 60000,
+        RATE_LIMIT_LIMIT: 100,
+        STORAGE_PROVIDER: 's3',
+        STORAGE_BUCKET: 'bucket',
+        STORAGE_ACCESS_KEY: 'key',
+        STORAGE_SECRET_KEY: 'secret',
+        TRUST_PROXY: false,
+        MAX_IMAGE_SIZE_BYTES: 10485760,
+        MAX_VIDEO_SIZE_BYTES: 104857600,
+        AUTH_ALLOW_DEV_OTP_OUTPUT: false,
+        AUTH_NEW_DEVICE_AUTO_APPROVE: false,
+      }),
+    ).toThrow(/TRUST_PROXY/);
   });
 
   it('rejects AUTH_ALLOW_DEV_OTP_OUTPUT=true in production', () => {
@@ -120,6 +178,8 @@ describe('validateEnv', () => {
         RATE_LIMIT_TTL: 60000,
         RATE_LIMIT_LIMIT: 100,
         STORAGE_PROVIDER: 'local',
+        STORAGE_ALLOW_EPHEMERAL: true,
+        TRUST_PROXY: true,
         MAX_IMAGE_SIZE_BYTES: 10485760,
         MAX_VIDEO_SIZE_BYTES: 104857600,
         AUTH_ALLOW_DEV_OTP_OUTPUT: 'true',

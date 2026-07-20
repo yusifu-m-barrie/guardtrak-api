@@ -24,7 +24,7 @@
     "prisma:validate": "prisma validate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed": "node --import tsx prisma/seed.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
@@ -64,7 +64,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "tsx": "^4.23.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -90,7 +91,6 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "tsx": "^4.23.1",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },

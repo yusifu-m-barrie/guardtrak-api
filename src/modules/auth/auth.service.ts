@@ -229,7 +229,18 @@ export class AuthService {
       );
     }
 
-    const fingerprint = buildSessionFingerprint(ctx.userAgent, null);
+    const devicePlatform = current.deviceId
+      ? (
+          await this.prisma.device.findUnique({
+            where: { id: current.deviceId },
+            select: { platform: true },
+          })
+        )?.platform
+      : null;
+    const fingerprint = buildSessionFingerprint(
+      ctx.userAgent,
+      devicePlatform ?? null,
+    );
     const strictFingerprint =
       this.configService.get<boolean>('auth.strictFingerprint') === true;
     if (

@@ -46,6 +46,7 @@ const BOOLEAN_ENV_KEYS = [
   'TRUST_PROXY',
   'COMPRESSION_ENABLED',
   'ENABLE_SWAGGER',
+  'STORAGE_ALLOW_EPHEMERAL',
 ] as const;
 
 /**
@@ -215,6 +216,11 @@ export class EnvironmentVariables {
 
   @IsIn(['local', 's3', 'minio', 'r2'])
   STORAGE_PROVIDER: StorageProvider = 'local';
+
+  /** Explicit opt-in for ephemeral local disk in staging/production demos only. */
+  @IsOptional()
+  @Transform(optionalBooleanTransform)
+  STORAGE_ALLOW_EPHEMERAL?: boolean;
 
   @IsOptional()
   @IsString()
@@ -452,8 +458,9 @@ export class EnvironmentVariables {
   @Transform(booleanWithDefault(true))
   METRICS_ENABLED = true;
 
-  @Transform(booleanWithDefault(false))
-  TRUST_PROXY = false;
+  @IsOptional()
+  @Transform(optionalBooleanTransform)
+  TRUST_PROXY?: boolean;
 
   @Transform(booleanWithDefault(true))
   COMPRESSION_ENABLED = true;
@@ -516,6 +523,19 @@ export function validateEnv(
     ) {
       throw new Error(
         'Environment validation failed: storage credentials are required when STORAGE_PROVIDER is not local',
+      );
+    }
+    if (
+      validated.STORAGE_PROVIDER === 'local' &&
+      validated.STORAGE_ALLOW_EPHEMERAL !== true
+    ) {
+      throw new Error(
+        'Environment validation failed: STORAGE_PROVIDER=local is not allowed in staging/production (Railway disk is ephemeral). Use s3/r2, or set STORAGE_ALLOW_EPHEMERAL=true only for temporary demos',
+      );
+    }
+    if (validated.TRUST_PROXY !== true) {
+      throw new Error(
+        'Environment validation failed: TRUST_PROXY must be true in staging/production (required behind Railway/Nginx)',
       );
     }
     if (validated.AUTH_ALLOW_DEV_OTP_OUTPUT === true) {

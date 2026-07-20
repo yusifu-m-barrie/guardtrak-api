@@ -65,7 +65,7 @@ export class OfficersController {
   }
 
   @Patch('me')
-  @Permissions('profile:update:self')
+  @Permissions('officer:read:self')
   @ApiOperation({
     summary: 'Update current officer contact details and emergency contacts',
   })

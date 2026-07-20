@@ -24,6 +24,7 @@ import { ListIncidentsQueryDto } from './dto/list-incidents-query.dto';
 import { ReopenIncidentDto } from './dto/reopen-incident.dto';
 import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { IncidentsService } from './incidents.service';
+import { IncidentStatus } from '../../../generated/prisma/client';
 
 @ApiTags('incidents')
 @ApiBearerAuth()
@@ -49,6 +50,24 @@ export class IncidentsController {
     @Query() query: ListIncidentsQueryDto,
   ) {
     return this.incidentsService.findAll(user, query);
+  }
+
+  @Get('categories')
+  @Permissions('incident:read:self')
+  @ApiOperation({ summary: 'List incident categories for reporting' })
+  categories() {
+    return this.incidentsService.listCategories();
+  }
+
+  @Get('drafts')
+  @Permissions('incident:read:self')
+  @ApiOperation({ summary: 'List draft incidents for the current officer' })
+  drafts(@CurrentUser() user: RequestUser) {
+    return this.incidentsService.findAll(user, {
+      page: 1,
+      limit: 50,
+      status: IncidentStatus.DRAFT,
+    });
   }
 
   @Get('statistics')
