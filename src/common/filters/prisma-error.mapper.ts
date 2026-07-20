@@ -42,12 +42,26 @@ export function mapPrismaError(error: unknown): MappedPrismaError | null {
         code: ErrorCode.BAD_REQUEST,
         message: 'Related record constraint failed',
       };
+    case 'P2021':
+      return {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+        code: ErrorCode.DATABASE_ERROR,
+        message:
+          'Database tables are missing. Run prisma migrate deploy against this database.',
+      };
+    case 'P2022':
+      return {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+        code: ErrorCode.DATABASE_ERROR,
+        message:
+          'Database column is missing. Run pending Prisma migrations against this database.',
+      };
     default:
       if (code.startsWith('P')) {
         return {
           status: HttpStatus.BAD_REQUEST,
           code: ErrorCode.DATABASE_ERROR,
-          message: 'A database error occurred',
+          message: `A database error occurred (${code})`,
         };
       }
       return null;

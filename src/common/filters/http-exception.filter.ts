@@ -77,8 +77,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception instanceof Error ? exception.stack : undefined,
       );
     } else {
+      const prismaCode =
+        exception &&
+        typeof exception === 'object' &&
+        'code' in exception &&
+        typeof (exception as { code: unknown }).code === 'string'
+          ? (exception as { code: string }).code
+          : '';
+      const detail =
+        exception instanceof Error ? exception.message : undefined;
       this.logger.error(
-        `[${requestId}] ${request.method} ${request.url} -> ${status} ${code}`,
+        `[${requestId}] ${request.method} ${request.url} -> ${status} ${code}${
+          prismaCode ? ` prisma=${prismaCode}` : ''
+        }${detail ? ` — ${detail}` : ''}`,
       );
     }
 

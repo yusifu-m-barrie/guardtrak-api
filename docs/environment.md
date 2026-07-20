@@ -34,6 +34,31 @@ TRUST_PROXY=false
 
 ---
 
+## Railway
+
+Private `*.railway.internal` URLs only work when API + Postgres are in the **same** Railway project. Across projects, use `DATABASE_PUBLIC_URL` (`*.rlwy.net`) with `?sslmode=require`.
+
+### Fresh database = no tables
+
+Until migrations run, login/refresh return `DATABASE_ERROR`. Fix once:
+
+```powershell
+cd guardtrak-api
+$env:DATABASE_URL="postgresql://USER:PASSWORD@HOST.rlwy.net:PORT/railway?sslmode=require"
+npx prisma migrate deploy
+npx prisma db seed
+```
+
+Then set the API **Start Command** (or use `railway.toml` / Dockerfile) to:
+
+```bash
+npx prisma migrate deploy && node dist/src/main.js
+```
+
+Seed creates org `GUARDTRAK` and users like `OFF-001` / `GuardTrak!Dev2026`.
+
+---
+
 ## Mode B — Production
 
 ```env

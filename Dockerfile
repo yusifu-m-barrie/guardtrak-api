@@ -27,4 +27,5 @@ COPY --from=build /app/package.json ./package.json
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD curl -fsS http://127.0.0.1:3000/api/v1/health || exit 1
-CMD ["node", "dist/src/main.js"]
+# Apply pending migrations on boot (safe/idempotent), then start the API.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]
