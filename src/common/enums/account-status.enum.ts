@@ -1,0 +1,7 @@
+export enum AccountStatus {
+  INVITED = 'INVITED',
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  DISABLED = 'DISABLED',
+  ARCHIVED = 'ARCHIVED',
+}

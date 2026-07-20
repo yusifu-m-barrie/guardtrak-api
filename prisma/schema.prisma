@@ -1,0 +1,1704 @@
+// GuardTrak API — Phase 2 PostgreSQL schema
+// Prisma 7 | UUID PKs | timestamptz | organisation tenancy
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserRole {
+  SECURITY_OFFICER
+  SUPERVISOR
+  ADMINISTRATOR
+  SUPER_ADMIN
+}
+
+enum AccountStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
+  ARCHIVED
+}
+
+enum OrganisationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum SiteStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum OfficerEmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  TERMINATED
+  ARCHIVED
+}
+
+enum DeviceStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  BLOCKED
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+  OTHER
+}
+
+enum ShiftStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REASSIGNED
+  MISSED
+}
+
+enum AttendanceStatus {
+  PENDING
+  CLOCKED_IN
+  CLOCKED_OUT
+  PENDING_SUPERVISOR_APPROVAL
+  APPROVED_WITH_WARNING
+  SUPERVISOR_APPROVED
+  SUPERVISOR_REJECTED
+  VOIDED
+}
+
+enum AttendanceEventType {
+  CLOCK_IN
+  CLOCK_OUT
+  CLOCK_IN_REVIEW_REQUESTED
+  CLOCK_OUT_REVIEW_REQUESTED
+  APPROVED
+  REJECTED
+  CORRECTED
+  VOIDED
+}
+
+enum GeofencePolicy {
+  BLOCK
+  ALLOW_WITH_REASON
+  REQUIRE_SUPERVISOR_APPROVAL
+}
+
+enum BreakType {
+  MEAL
+  REST
+  MEDICAL
+  AUTHORISED
+  OTHER
+}
+
+enum BreakStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  PENDING_SYNC
+  REQUIRES_REVIEW
+}
+
+enum PatrolRouteStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum PatrolAssignmentStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  PARTIALLY_COMPLETED
+  MISSED
+  CANCELLED
+  REQUIRES_REVIEW
+}
+
+enum CheckpointStatus {
+  PENDING
+  AVAILABLE
+  COMPLETED
+  MISSED
+  SKIPPED
+  OUTSIDE_GEOFENCE
+  REQUIRES_REVIEW
+}
+
+enum CheckpointVerificationMethod {
+  GPS
+  QR_CODE
+  GPS_AND_QR
+  MANUAL_SUPERVISOR_OVERRIDE
+}
+
+enum IncidentCategory {
+  THEFT
+  TRESPASSING
+  VIOLENCE
+  FIRE
+  MEDICAL_EMERGENCY
+  PROPERTY_DAMAGE
+  SUSPICIOUS_ACTIVITY
+  MISSING_PROPERTY
+  ACCESS_CONTROL_VIOLATION
+  WORKPLACE_ACCIDENT
+  SECURITY_BREACH
+  PUBLIC_DISTURBANCE
+  EQUIPMENT_FAILURE
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum IncidentStatus {
+  DRAFT
+  SUBMITTED
+  NEW
+  ACKNOWLEDGED
+  OFFICER_DISPATCHED
+  UNDER_REVIEW
+  UNDER_INVESTIGATION
+  ESCALATED
+  RESOLVED
+  CLOSED
+  REJECTED
+}
+
+enum IncidentNoteVisibility {
+  OFFICER_VISIBLE
+  SUPERVISOR_ONLY
+  ADMIN_ONLY
+}
+
+enum EvidenceType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  OTHER
+}
+
+enum EvidenceStatus {
+  PENDING_UPLOAD
+  UPLOADING
+  UPLOADED
+  PROCESSING
+  AVAILABLE
+  FAILED
+  REJECTED
+  DELETED
+}
+
+enum EvidenceScanStatus {
+  NOT_SCANNED
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+}
+
+enum NotificationType {
+  GENERAL
+  SHIFT_ASSIGNED
+  SHIFT_UPDATED
+  SHIFT_CANCELLED
+  CLOCK_IN_REMINDER
+  CLOCK_OUT_REMINDER
+  LATE_ALERT
+  ABSENCE_ALERT
+  ATTENDANCE_APPROVED
+  ATTENDANCE_REJECTED
+  INCIDENT_SUBMITTED
+  INCIDENT_ACKNOWLEDGED
+  INCIDENT_UPDATED
+  INCIDENT_ESCALATED
+  PATROL_ASSIGNED
+  PATROL_MISSED
+  SOS_ALERT
+  SYSTEM
+  MAINTENANCE
+  SUPPORT_UPDATE
+  BROADCAST
+  SUPERVISOR_ALERT
+  ADMIN_ALERT
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  SMS
+  EMAIL
+}
+
+enum NotificationDeliveryStatus {
+  NOT_REQUESTED
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  UNKNOWN
+}
+
+enum EmergencyStatus {
+  CREATED
+  ACCEPTED_FOR_PROCESSING
+  ACKNOWLEDGED
+  RESPONDING
+  RESOLVED
+  CANCELLED
+  FAILED
+  FALSE_ALARM
+}
+
+enum SupportRequestStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportRequestPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportRequestCategory {
+  GENERAL
+  TECHNICAL
+  ACCOUNT
+  BILLING
+  DEVICE
+  OTHER
+}
+
+enum SyncOperationStatus {
+  RECEIVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CONFLICT
+  EXPIRED
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  APPROVE
+  REJECT
+  ASSIGN
+  REASSIGN
+  CLOCK_IN
+  CLOCK_OUT
+  UPLOAD
+  DOWNLOAD
+  EXPORT
+  ESCALATE
+  RESOLVE
+  PASSWORD_CHANGE
+  SECURITY_EVENT
+  CACHE_CLEAR
+  QUEUE_RETRY
+  ADMIN_ACTION
+  SESSION_REVOKE
+}
+
+// =============================================================================
+// ORGANISATION & IDENTITY
+// =============================================================================
+
+enum PasswordResetPurpose {
+  OTP
+  RESET_TOKEN
+}
+
+model Organisation {
+  id                 String             @id @default(uuid()) @db.Uuid
+  /// Stable login tenancy code (Strategy B: organisationCode + employeeId)
+  code               String             @unique
+  name               String
+  legalName          String?
+  registrationNumber String?            @unique
+  email              String?
+  phone              String?
+  address            String?
+  countryCode        String             @default("SL") @db.VarChar(2)
+  timezone           String             @default("Africa/Freetown")
+  logoUrl            String?
+  status             OrganisationStatus @default(ACTIVE)
+  /// Null = unlimited; Phase 9 storage quota enforcement
+  storageQuotaBytes  BigInt?
+  storageUsedBytes   BigInt             @default(0)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?          @db.Timestamptz(3)
+
+  users                       User[]
+  officerProfiles             OfficerProfile[]
+  supervisorProfiles          SupervisorProfile[]
+  supervisorOfficers          SupervisorOfficer[]
+  clients                     Client[]
+  sites                       SecuritySite[]
+  devices                     Device[]
+  shifts                      Shift[]
+  assignments                 Assignment[]
+  attendances                 Attendance[]
+  attendanceEvents            AttendanceEvent[]
+  shiftBreaks                 ShiftBreak[]
+  patrolRoutes                PatrolRoute[]
+  patrolCheckpoints           PatrolCheckpoint[]
+  patrolAssignments           PatrolAssignment[]
+  patrolAssignmentCheckpoints PatrolAssignmentCheckpoint[]
+  patrolVisits                PatrolVisit[]
+  incidents                   Incident[]
+  incidentStatusEvents        IncidentStatusEvent[]
+  incidentNotes               IncidentNote[]
+  evidences                   Evidence[]
+  notifications               Notification[]
+  emergencies                 Emergency[]
+  emergencyStatusEvents       EmergencyStatusEvent[]
+  supportRequests             SupportRequest[]
+  supportMessages             SupportMessage[]
+  faqArticles                 FaqArticle[]
+  idempotencyRecords          IdempotencyRecord[]
+  syncConflicts               SyncConflict[]
+  syncOperations              SyncOperation[]
+  auditLogs                   AuditLog[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("organisations")
+}
+
+model User {
+  id                  String        @id @default(uuid()) @db.Uuid
+  organisationId      String?       @db.Uuid
+  employeeId          String?
+  email               String        @unique
+  phone               String?
+  passwordHash        String
+  firstName           String
+  middleName          String?
+  lastName            String
+  displayName         String?
+  role                UserRole
+  status              AccountStatus @default(INVITED)
+  avatarUrl           String?
+  mustChangePassword  Boolean       @default(false)
+  lastLoginAt         DateTime?     @db.Timestamptz(3)
+  passwordChangedAt   DateTime?     @db.Timestamptz(3)
+  failedLoginAttempts Int           @default(0)
+  lockedUntil         DateTime?     @db.Timestamptz(3)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime      @updatedAt @db.Timestamptz(3)
+  deletedAt           DateTime?     @db.Timestamptz(3)
+
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+
+  officerProfile          OfficerProfile?
+  supervisorProfile       SupervisorProfile?
+  refreshSessions         RefreshSession[]
+  passwordResetTokens     PasswordResetToken[]
+  passwordHistories       PasswordHistory[]
+  devices                 Device[]
+  notificationPreference  NotificationPreference?
+  notifications           Notification[]          @relation("NotificationRecipient")
+  supportRequests         SupportRequest[]        @relation("SupportRequestAuthor")
+  assignedSupportRequests SupportRequest[]        @relation("SupportRequestAssignee")
+  supportMessages         SupportMessage[]
+  auditLogs               AuditLog[]              @relation("AuditActor")
+  idempotencyRecords      IdempotencyRecord[]
+  syncConflicts           SyncConflict[]          @relation("SyncConflictUser")
+  resolvedSyncConflicts   SyncConflict[]          @relation("SyncConflictResolver")
+  syncOperations          SyncOperation[]
+
+  createdShifts               Shift[]                 @relation("ShiftCreator")
+  cancelledShifts             Shift[]                 @relation("ShiftCanceller")
+  cancelledBreaks             ShiftBreak[]            @relation("BreakCanceller")
+  createdAssignments          Assignment[]            @relation("AssignmentCreator")
+  assignmentEvents            AssignmentEvent[]       @relation("AssignmentEventActor")
+  reviewedAttendances         Attendance[]            @relation("AttendanceReviewer")
+  attendanceEvents            AttendanceEvent[]       @relation("AttendanceEventActor")
+  createdPatrolRoutes         PatrolRoute[]           @relation("PatrolRouteCreator")
+  cancelledPatrolAssignments  PatrolAssignment[]      @relation("PatrolAssignmentCanceller")
+  patrolAssignmentEvents      PatrolAssignmentEvent[] @relation("PatrolAssignmentEventActor")
+  reviewedPatrolVisits        PatrolVisit[]           @relation("PatrolVisitReviewer")
+  reportedIncidents           Incident[]              @relation("IncidentReporterUser")
+  assignedSupervisorIncidents Incident[]              @relation("IncidentAssignedSupervisor")
+  incidentStatusEvents        IncidentStatusEvent[]   @relation("IncidentStatusActor")
+  incidentNotes               IncidentNote[]          @relation("IncidentNoteAuthor")
+  uploadedEvidences           Evidence[]              @relation("EvidenceUploader")
+  verifiedEvidences           Evidence[]              @relation("EvidenceVerifier")
+  deletedEvidences            Evidence[]              @relation("EvidenceDeleter")
+  emergencies                 Emergency[]             @relation("EmergencyUser")
+  acknowledgedEmergencies     Emergency[]             @relation("EmergencyAcknowledger")
+  resolvedEmergencies         Emergency[]             @relation("EmergencyResolver")
+  emergencyStatusEvents       EmergencyStatusEvent[]  @relation("EmergencyStatusActor")
+
+  @@unique([organisationId, employeeId])
+  @@unique([organisationId, phone])
+  @@index([organisationId, role, status])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model RefreshSession {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @db.Uuid
+  deviceId            String?   @db.Uuid
+  tokenHash           String    @unique
+  familyId            String    @db.Uuid
+  expiresAt           DateTime  @db.Timestamptz(3)
+  revokedAt           DateTime? @db.Timestamptz(3)
+  replacedBySessionId String?   @db.Uuid
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  lastUsedAt          DateTime? @db.Timestamptz(3)
+  ipAddress           String?
+  userAgent           String?
+  /// Session fingerprint (UA + platform hash) for anomaly detection
+  fingerprint         String?
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device            Device?          @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  replacedBySession RefreshSession?  @relation("SessionReplacement", fields: [replacedBySessionId], references: [id], onDelete: SetNull)
+  previousSessions  RefreshSession[] @relation("SessionReplacement")
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
+}
+
+model PasswordHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  passwordHash String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("password_histories")
+}
+
+model PasswordResetToken {
+  id         String               @id @default(uuid()) @db.Uuid
+  userId     String               @db.Uuid
+  purpose    PasswordResetPurpose @default(OTP)
+  tokenHash  String               @unique
+  expiresAt  DateTime             @db.Timestamptz(3)
+  consumedAt DateTime?            @db.Timestamptz(3)
+  attempts   Int                  @default(0)
+  createdAt  DateTime             @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+// =============================================================================
+// OFFICERS & SUPERVISORS
+// =============================================================================
+
+model OfficerProfile {
+  id                           String                  @id @default(uuid()) @db.Uuid
+  organisationId               String                  @db.Uuid
+  userId                       String                  @unique @db.Uuid
+  officerNumber                String
+  employmentStatus             OfficerEmploymentStatus @default(ACTIVE)
+  hireDate                     DateTime?               @db.Date
+  nationalIdNumber             String?
+  dateOfBirth                  DateTime?               @db.Date
+  gender                       String?
+  residentialAddress           String?
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  emergencyContactRelationship String?
+  rankOrTitle                  String?
+  /// Structured certifications/skills JSON, e.g. [{ "name": "First Aid", "expiresAt": "..." }]
+  skills                       Json?
+  notes                        String?
+  createdAt                    DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                    DateTime                @updatedAt @db.Timestamptz(3)
+  deletedAt                    DateTime?               @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  supervisorLinks   SupervisorOfficer[]
+  assignments       Assignment[]
+  attendances       Attendance[]
+  shiftBreaks       ShiftBreak[]
+  patrolAssignments PatrolAssignment[]
+  patrolVisits      PatrolVisit[]
+  reportedIncidents Incident[]          @relation("IncidentReportingOfficer")
+  emergencies       Emergency[]
+
+  @@unique([organisationId, officerNumber])
+  @@index([organisationId, employmentStatus])
+  @@index([deletedAt])
+  @@map("officer_profiles")
+}
+
+model SupervisorProfile {
+  id               String    @id @default(uuid()) @db.Uuid
+  organisationId   String    @db.Uuid
+  userId           String    @unique @db.Uuid
+  supervisorNumber String
+  title            String?
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime? @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  officerLinks SupervisorOfficer[]
+  assignments  Assignment[]
+
+  @@unique([organisationId, supervisorNumber])
+  @@index([organisationId])
+  @@index([deletedAt])
+  @@map("supervisor_profiles")
+}
+
+model SupervisorOfficer {
+  id             String    @id @default(uuid()) @db.Uuid
+  organisationId String    @db.Uuid
+  supervisorId   String    @db.Uuid
+  officerId      String    @db.Uuid
+  activeFrom     DateTime  @db.Timestamptz(3)
+  activeUntil    DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  supervisor   SupervisorProfile @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+  officer      OfficerProfile    @relation(fields: [officerId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([supervisorId, officerId])
+  @@index([officerId])
+  @@map("supervisor_officers")
+}
+
+// =============================================================================
+// CLIENTS & SITES
+// =============================================================================
+
+model Client {
+  id                  String       @id @default(uuid()) @db.Uuid
+  organisationId      String       @db.Uuid
+  name                String
+  legalName           String?
+  registrationNumber  String?
+  primaryContactName  String
+  primaryContactEmail String?
+  primaryContactPhone String?
+  billingAddress      String?
+  operationalNotes    String?
+  status              ClientStatus @default(ACTIVE)
+  createdAt           DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime     @updatedAt @db.Timestamptz(3)
+  deletedAt           DateTime?    @db.Timestamptz(3)
+
+  organisation Organisation   @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  sites        SecuritySite[]
+  incidents    Incident[]
+
+  @@unique([organisationId, name])
+  @@unique([organisationId, registrationNumber])
+  @@index([organisationId, status])
+  @@index([deletedAt])
+  @@map("clients")
+}
+
+model SecuritySite {
+  id                            String         @id @default(uuid()) @db.Uuid
+  organisationId                String         @db.Uuid
+  clientId                      String         @db.Uuid
+  name                          String
+  code                          String
+  address                       String
+  latitude                      Decimal        @db.Decimal(10, 7)
+  longitude                     Decimal        @db.Decimal(10, 7)
+  clockInRadiusMeters           Int
+  clockOutRadiusMeters          Int
+  checkpointDefaultRadiusMeters Int            @default(50)
+  minimumGpsAccuracyMeters      Int            @default(50)
+  clockInOutsideGeofencePolicy  GeofencePolicy @default(REQUIRE_SUPERVISOR_APPROVAL)
+  clockOutOutsideGeofencePolicy GeofencePolicy @default(ALLOW_WITH_REASON)
+  requiresClockInSelfie         Boolean        @default(false)
+  requiresClockOutSelfie        Boolean        @default(false)
+  requiresPatrol                Boolean        @default(false)
+  requiresFinalShiftNote        Boolean        @default(false)
+  instructions                  String?
+  emergencyContactName          String?
+  emergencyContactPhone         String?
+  status                        SiteStatus     @default(ACTIVE)
+  createdAt                     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt                     DateTime       @updatedAt @db.Timestamptz(3)
+  deletedAt                     DateTime?      @db.Timestamptz(3)
+
+  organisation      Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  shifts            Shift[]
+  attendances       Attendance[]
+  patrolRoutes      PatrolRoute[]
+  patrolAssignments PatrolAssignment[]
+  patrolVisits      PatrolVisit[]
+  incidents         Incident[]
+  emergencies       Emergency[]
+
+  @@unique([organisationId, code])
+  @@index([clientId, status])
+  @@index([organisationId, status])
+  @@index([deletedAt])
+  @@map("security_sites")
+}
+
+// =============================================================================
+// DEVICES & PUSH
+// =============================================================================
+
+model Device {
+  id                     String         @id @default(uuid()) @db.Uuid
+  organisationId         String         @db.Uuid
+  userId                 String         @db.Uuid
+  installationId         String         @unique
+  platform               DevicePlatform
+  deviceName             String?
+  manufacturer           String?
+  model                  String?
+  operatingSystem        String?
+  operatingSystemVersion String?
+  appVersion             String?
+  status                 DeviceStatus   @default(PENDING)
+  trustedAt              DateTime?      @db.Timestamptz(3)
+  revokedAt              DateTime?      @db.Timestamptz(3)
+  lastSeenAt             DateTime?      @db.Timestamptz(3)
+  /// 0–100 trust score (Phase 9); default mid-trust
+  trustScore             Int            @default(50)
+  createdAt              DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
+
+  organisation     Organisation      @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  pushTokens       PushToken[]
+  refreshSessions  RefreshSession[]
+  attendanceEvents AttendanceEvent[]
+  emergencies      Emergency[]
+  syncOperations   SyncOperation[]
+
+  @@index([userId, status])
+  @@index([organisationId, status])
+  @@map("devices")
+}
+
+model PushToken {
+  id               String    @id @default(uuid()) @db.Uuid
+  deviceId         String    @db.Uuid
+  token            String
+  provider         String
+  active           Boolean   @default(true)
+  lastRegisteredAt DateTime  @db.Timestamptz(3)
+  invalidatedAt    DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, token])
+  @@index([deviceId, active])
+  @@map("push_tokens")
+}
+
+// =============================================================================
+// SHIFTS & ASSIGNMENTS
+// =============================================================================
+
+model Shift {
+  id                       String      @id @default(uuid()) @db.Uuid
+  organisationId           String      @db.Uuid
+  siteId                   String      @db.Uuid
+  title                    String
+  description              String?
+  scheduledStartAt         DateTime    @db.Timestamptz(3)
+  scheduledEndAt           DateTime    @db.Timestamptz(3)
+  unpaidBreakMinutes       Int         @default(0)
+  gracePeriodMinutes       Int         @default(15)
+  overtimeThresholdMinutes Int?
+  status                   ShiftStatus @default(DRAFT)
+  instructions             String?
+  cancellationReason       String?
+  cancelledAt              DateTime?   @db.Timestamptz(3)
+  cancelledByUserId        String?     @db.Uuid
+  createdByUserId          String      @db.Uuid
+  createdAt                DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime    @updatedAt @db.Timestamptz(3)
+  deletedAt                DateTime?   @db.Timestamptz(3)
+
+  organisation      Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  site              SecuritySite       @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdBy         User               @relation("ShiftCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  cancelledBy       User?              @relation("ShiftCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  assignments       Assignment[]
+  attendances       Attendance[]
+  shiftBreaks       ShiftBreak[]
+  patrolAssignments PatrolAssignment[]
+  patrolVisits      PatrolVisit[]
+  incidents         Incident[]
+  emergencies       Emergency[]
+
+  @@index([organisationId, status, scheduledStartAt])
+  @@index([siteId, scheduledStartAt])
+  @@index([deletedAt])
+  @@map("shifts")
+}
+
+model Assignment {
+  id                   String           @id @default(uuid()) @db.Uuid
+  organisationId       String           @db.Uuid
+  shiftId              String           @db.Uuid
+  officerId            String           @db.Uuid
+  supervisorId         String?          @db.Uuid
+  status               AssignmentStatus @default(ASSIGNED)
+  assignedAt           DateTime         @default(now()) @db.Timestamptz(3)
+  confirmedAt          DateTime?        @db.Timestamptz(3)
+  startedAt            DateTime?        @db.Timestamptz(3)
+  completedAt          DateTime?        @db.Timestamptz(3)
+  cancelledAt          DateTime?        @db.Timestamptz(3)
+  cancellationReason   String?
+  replacedAssignmentId String?          @db.Uuid
+  createdByUserId      String           @db.Uuid
+  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @db.Timestamptz(3)
+
+  organisation       Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  shift              Shift              @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  officer            OfficerProfile     @relation(fields: [officerId], references: [id], onDelete: Restrict)
+  supervisor         SupervisorProfile? @relation(fields: [supervisorId], references: [id], onDelete: SetNull)
+  createdBy          User               @relation("AssignmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  replacedAssignment Assignment?        @relation("AssignmentReplacement", fields: [replacedAssignmentId], references: [id], onDelete: SetNull)
+  replacementOf      Assignment[]       @relation("AssignmentReplacement")
+  events             AssignmentEvent[]
+  attendance         Attendance?
+  patrolAssignments  PatrolAssignment[]
+  incidents          Incident[]
+  emergencies        Emergency[]
+
+  // Active-assignment uniqueness (same officer + shift) is enforced in services
+  // so cancelled/reassigned history rows can remain.
+  @@index([organisationId, status])
+  @@index([officerId, status, assignedAt])
+  @@index([shiftId, officerId, status])
+  @@index([shiftId, status])
+  @@index([assignedAt])
+  @@map("assignments")
+}
+
+model AssignmentEvent {
+  id             String            @id @default(uuid()) @db.Uuid
+  assignmentId   String            @db.Uuid
+  actorUserId    String?           @db.Uuid
+  previousStatus AssignmentStatus?
+  newStatus      AssignmentStatus
+  reason         String?
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  actorUser  User?      @relation("AssignmentEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([assignmentId, createdAt])
+  @@map("assignment_events")
+}
+
+// =============================================================================
+// ATTENDANCE & BREAKS
+// =============================================================================
+
+model Attendance {
+  id                      String           @id @default(uuid()) @db.Uuid
+  organisationId          String           @db.Uuid
+  assignmentId            String           @unique @db.Uuid
+  officerId               String           @db.Uuid
+  shiftId                 String           @db.Uuid
+  siteId                  String           @db.Uuid
+  status                  AttendanceStatus @default(PENDING)
+  clockInDeviceAt         DateTime?        @db.Timestamptz(3)
+  clockInServerAt         DateTime?        @db.Timestamptz(3)
+  clockOutDeviceAt        DateTime?        @db.Timestamptz(3)
+  clockOutServerAt        DateTime?        @db.Timestamptz(3)
+  clockInLatitude         Decimal?         @db.Decimal(10, 7)
+  clockInLongitude        Decimal?         @db.Decimal(10, 7)
+  clockInAccuracyMeters   Decimal?         @db.Decimal(10, 2)
+  clockInDistanceMeters   Decimal?         @db.Decimal(10, 2)
+  clockOutLatitude        Decimal?         @db.Decimal(10, 7)
+  clockOutLongitude       Decimal?         @db.Decimal(10, 7)
+  clockOutAccuracyMeters  Decimal?         @db.Decimal(10, 2)
+  clockOutDistanceMeters  Decimal?         @db.Decimal(10, 2)
+  clockInOutsideGeofence  Boolean          @default(false)
+  clockOutOutsideGeofence Boolean          @default(false)
+  clockInReason           String?
+  clockOutReason          String?
+  /// Soft reference to Evidence.id (avoids circular Prisma relation with Evidence.attendanceId)
+  clockInEvidenceId       String?          @db.Uuid
+  /// Soft reference to Evidence.id
+  clockOutEvidenceId      String?          @db.Uuid
+  grossMinutes            Int?
+  totalBreakMinutes       Int              @default(0)
+  payableMinutes          Int?
+  overtimeMinutes         Int?
+  lateMinutes             Int?
+  earlyDepartureMinutes   Int?
+  finalShiftNote          String?
+  approvalRequestedAt     DateTime?        @db.Timestamptz(3)
+  reviewedAt              DateTime?        @db.Timestamptz(3)
+  reviewedByUserId        String?          @db.Uuid
+  reviewReason            String?
+  localAttendanceId       String?
+  createdAt               DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime         @updatedAt @db.Timestamptz(3)
+  deletedAt               DateTime?        @db.Timestamptz(3)
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  assignment   Assignment        @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  officer      OfficerProfile    @relation(fields: [officerId], references: [id], onDelete: Restrict)
+  shift        Shift             @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  site         SecuritySite      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  reviewedBy   User?             @relation("AttendanceReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  events       AttendanceEvent[]
+  breaks       ShiftBreak[]
+  evidences    Evidence[]
+
+  @@unique([organisationId, localAttendanceId])
+  @@index([organisationId, status])
+  @@index([organisationId, officerId, status])
+  @@index([officerId, clockInServerAt])
+  @@index([siteId, status])
+  @@index([shiftId])
+  @@index([deletedAt])
+  @@map("attendances")
+}
+
+model AttendanceEvent {
+  id              String              @id @default(uuid()) @db.Uuid
+  organisationId  String              @db.Uuid
+  attendanceId    String              @db.Uuid
+  type            AttendanceEventType
+  actorUserId     String?             @db.Uuid
+  deviceId        String?             @db.Uuid
+  deviceTimestamp DateTime?           @db.Timestamptz(3)
+  serverTimestamp DateTime            @default(now()) @db.Timestamptz(3)
+  latitude        Decimal?            @db.Decimal(10, 7)
+  longitude       Decimal?            @db.Decimal(10, 7)
+  accuracyMeters  Decimal?            @db.Decimal(10, 2)
+  distanceMeters  Decimal?            @db.Decimal(10, 2)
+  reason          String?
+  metadata        Json?
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  attendance   Attendance   @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+  actorUser    User?        @relation("AttendanceEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  device       Device?      @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([attendanceId, createdAt])
+  @@index([organisationId, type])
+  @@map("attendance_events")
+}
+
+model ShiftBreak {
+  id                 String      @id @default(uuid()) @db.Uuid
+  organisationId     String      @db.Uuid
+  attendanceId       String      @db.Uuid
+  officerId          String      @db.Uuid
+  shiftId            String      @db.Uuid
+  type               BreakType
+  status             BreakStatus @default(ACTIVE)
+  startedAtDevice    DateTime    @db.Timestamptz(3)
+  startedAtServer    DateTime?   @db.Timestamptz(3)
+  endedAtDevice      DateTime?   @db.Timestamptz(3)
+  endedAtServer      DateTime?   @db.Timestamptz(3)
+  durationMinutes    Int?
+  note               String?
+  localBreakId       String?
+  cancellationReason String?
+  cancelledByUserId  String?     @db.Uuid
+  createdAt          DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime    @updatedAt @db.Timestamptz(3)
+
+  organisation Organisation   @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  attendance   Attendance     @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+  officer      OfficerProfile @relation(fields: [officerId], references: [id], onDelete: Restrict)
+  shift        Shift          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  cancelledBy  User?          @relation("BreakCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organisationId, localBreakId])
+  @@index([attendanceId, status])
+  @@index([officerId, status])
+  @@map("shift_breaks")
+}
+
+// =============================================================================
+// PATROLS
+// =============================================================================
+
+model PatrolRoute {
+  id                          String            @id @default(uuid()) @db.Uuid
+  organisationId              String            @db.Uuid
+  siteId                      String            @db.Uuid
+  name                        String
+  description                 String?
+  instructions                String?
+  status                      PatrolRouteStatus @default(DRAFT)
+  estimatedDurationMinutes    Int?
+  requireSequentialCompletion Boolean           @default(true)
+  createdByUserId             String            @db.Uuid
+  createdAt                   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime          @updatedAt @db.Timestamptz(3)
+  deletedAt                   DateTime?         @db.Timestamptz(3)
+
+  organisation Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  site         SecuritySite       @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdBy    User               @relation("PatrolRouteCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  checkpoints  PatrolCheckpoint[]
+  assignments  PatrolAssignment[]
+
+  @@index([organisationId, status])
+  @@index([siteId, status])
+  @@index([deletedAt])
+  @@map("patrol_routes")
+}
+
+model PatrolCheckpoint {
+  id                       String                       @id @default(uuid()) @db.Uuid
+  organisationId           String                       @db.Uuid
+  patrolRouteId            String                       @db.Uuid
+  name                     String
+  description              String?
+  sequence                 Int
+  latitude                 Decimal                      @db.Decimal(10, 7)
+  longitude                Decimal                      @db.Decimal(10, 7)
+  allowedRadiusMeters      Int
+  verificationMethod       CheckpointVerificationMethod @default(GPS)
+  /// Dev/migration plaintext — never returned by API. Prefer qrCodeHash.
+  qrCodeValue              String?
+  qrCodeHash               String?
+  minimumGpsAccuracyMeters Int?
+  requiresPhoto            Boolean                      @default(false)
+  requiresNote             Boolean                      @default(false)
+  instructions             String?
+  active                   Boolean                      @default(true)
+  createdAt                DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                     @updatedAt @db.Timestamptz(3)
+  deletedAt                DateTime?                    @db.Timestamptz(3)
+
+  organisation    Organisation                 @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  patrolRoute     PatrolRoute                  @relation(fields: [patrolRouteId], references: [id], onDelete: Restrict)
+  visits          PatrolVisit[]
+  assignmentSnaps PatrolAssignmentCheckpoint[]
+
+  @@unique([patrolRouteId, sequence])
+  @@unique([qrCodeHash])
+  @@index([patrolRouteId, sequence])
+  @@index([organisationId])
+  @@index([deletedAt])
+  @@map("patrol_checkpoints")
+}
+
+model PatrolAssignment {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  organisationId           String                 @db.Uuid
+  patrolRouteId            String                 @db.Uuid
+  assignmentId             String                 @db.Uuid
+  officerId                String                 @db.Uuid
+  shiftId                  String                 @db.Uuid
+  siteId                   String                 @db.Uuid
+  scheduledStartAt         DateTime?              @db.Timestamptz(3)
+  scheduledEndAt           DateTime?              @db.Timestamptz(3)
+  startedAt                DateTime?              @db.Timestamptz(3)
+  startedAtDevice          DateTime?              @db.Timestamptz(3)
+  completedAt              DateTime?              @db.Timestamptz(3)
+  completedAtDevice        DateTime?              @db.Timestamptz(3)
+  status                   PatrolAssignmentStatus @default(NOT_STARTED)
+  completedCheckpointCount Int                    @default(0)
+  totalCheckpointCount     Int                    @default(0)
+  finalNote                String?
+  cancellationReason       String?
+  cancelledAt              DateTime?              @db.Timestamptz(3)
+  cancelledByUserId        String?                @db.Uuid
+  createdAt                DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime               @updatedAt @db.Timestamptz(3)
+
+  organisation        Organisation                 @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  patrolRoute         PatrolRoute                  @relation(fields: [patrolRouteId], references: [id], onDelete: Restrict)
+  assignment          Assignment                   @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  officer             OfficerProfile               @relation(fields: [officerId], references: [id], onDelete: Restrict)
+  shift               Shift                        @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  site                SecuritySite                 @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  cancelledBy         User?                        @relation("PatrolAssignmentCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  visits              PatrolVisit[]
+  checkpointSnapshots PatrolAssignmentCheckpoint[]
+  events              PatrolAssignmentEvent[]
+  incidents           Incident[]
+
+  @@index([organisationId, status])
+  @@index([officerId, status])
+  @@index([assignmentId])
+  @@index([siteId, status])
+  @@map("patrol_assignments")
+}
+
+/// Immutable checkpoint snapshot copied when a patrol assignment is created.
+model PatrolAssignmentCheckpoint {
+  id                       String                       @id @default(uuid()) @db.Uuid
+  organisationId           String                       @db.Uuid
+  patrolAssignmentId       String                       @db.Uuid
+  sourceCheckpointId       String?                      @db.Uuid
+  name                     String
+  description              String?
+  sequence                 Int
+  latitude                 Decimal                      @db.Decimal(10, 7)
+  longitude                Decimal                      @db.Decimal(10, 7)
+  allowedRadiusMeters      Int
+  verificationMethod       CheckpointVerificationMethod
+  qrCodeHash               String?
+  requiresPhoto            Boolean                      @default(false)
+  requiresNote             Boolean                      @default(false)
+  instructions             String?
+  minimumGpsAccuracyMeters Int?
+  createdAt                DateTime                     @default(now()) @db.Timestamptz(3)
+
+  organisation     Organisation      @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  patrolAssignment PatrolAssignment  @relation(fields: [patrolAssignmentId], references: [id], onDelete: Cascade)
+  sourceCheckpoint PatrolCheckpoint? @relation(fields: [sourceCheckpointId], references: [id], onDelete: SetNull)
+  visits           PatrolVisit[]
+
+  @@unique([patrolAssignmentId, sequence])
+  @@index([patrolAssignmentId, sequence])
+  @@index([organisationId])
+  @@map("patrol_assignment_checkpoints")
+}
+
+model PatrolAssignmentEvent {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  patrolAssignmentId String                  @db.Uuid
+  actorUserId        String?                 @db.Uuid
+  previousStatus     PatrolAssignmentStatus?
+  newStatus          PatrolAssignmentStatus
+  reason             String?
+  createdAt          DateTime                @default(now()) @db.Timestamptz(3)
+
+  patrolAssignment PatrolAssignment @relation(fields: [patrolAssignmentId], references: [id], onDelete: Cascade)
+  actorUser        User?            @relation("PatrolAssignmentEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([patrolAssignmentId, createdAt])
+  @@map("patrol_assignment_events")
+}
+
+model PatrolVisit {
+  id                     String                       @id @default(uuid()) @db.Uuid
+  organisationId         String                       @db.Uuid
+  patrolAssignmentId     String                       @db.Uuid
+  patrolCheckpointId     String?                      @db.Uuid
+  assignmentCheckpointId String?                      @db.Uuid
+  officerId              String                       @db.Uuid
+  shiftId                String                       @db.Uuid
+  siteId                 String                       @db.Uuid
+  status                 CheckpointStatus             @default(PENDING)
+  verificationMethod     CheckpointVerificationMethod
+  visitedAtDevice        DateTime                     @db.Timestamptz(3)
+  visitedAtServer        DateTime?                    @db.Timestamptz(3)
+  latitude               Decimal                      @db.Decimal(10, 7)
+  longitude              Decimal                      @db.Decimal(10, 7)
+  accuracyMeters         Decimal?                     @db.Decimal(10, 2)
+  distanceMeters         Decimal?                     @db.Decimal(10, 2)
+  note                   String?
+  /// Soft reference to Evidence.id
+  evidenceId             String?                      @db.Uuid
+  localVisitId           String?
+  reviewedAt             DateTime?                    @db.Timestamptz(3)
+  reviewedByUserId       String?                      @db.Uuid
+  reviewReason           String?
+  createdAt              DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                     @updatedAt @db.Timestamptz(3)
+
+  organisation         Organisation                @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  patrolAssignment     PatrolAssignment            @relation(fields: [patrolAssignmentId], references: [id], onDelete: Restrict)
+  patrolCheckpoint     PatrolCheckpoint?           @relation(fields: [patrolCheckpointId], references: [id], onDelete: Restrict)
+  assignmentCheckpoint PatrolAssignmentCheckpoint? @relation(fields: [assignmentCheckpointId], references: [id], onDelete: Restrict)
+  officer              OfficerProfile              @relation(fields: [officerId], references: [id], onDelete: Restrict)
+  shift                Shift                       @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  site                 SecuritySite                @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  reviewedBy           User?                       @relation("PatrolVisitReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  evidences            Evidence[]
+
+  @@unique([patrolAssignmentId, assignmentCheckpointId])
+  @@unique([organisationId, localVisitId])
+  @@index([patrolAssignmentId, status])
+  @@index([officerId, visitedAtServer])
+  @@index([status, visitedAtServer])
+  @@map("patrol_visits")
+}
+
+// =============================================================================
+// INCIDENTS
+// =============================================================================
+
+model Incident {
+  id                            String           @id @default(uuid()) @db.Uuid
+  organisationId                String           @db.Uuid
+  incidentNumber                String
+  clientId                      String           @db.Uuid
+  siteId                        String           @db.Uuid
+  shiftId                       String?          @db.Uuid
+  assignmentId                  String?          @db.Uuid
+  reportedByOfficerId           String           @db.Uuid
+  reportedByUserId              String           @db.Uuid
+  category                      IncidentCategory
+  severity                      IncidentSeverity
+  priority                      IncidentPriority @default(NORMAL)
+  status                        IncidentStatus   @default(DRAFT)
+  title                         String
+  description                   String
+  actionsTaken                  String?
+  occurredAtDevice              DateTime         @db.Timestamptz(3)
+  occurredAtServer              DateTime?        @db.Timestamptz(3)
+  reportedAtServer              DateTime         @default(now()) @db.Timestamptz(3)
+  latitude                      Decimal?         @db.Decimal(10, 7)
+  longitude                     Decimal?         @db.Decimal(10, 7)
+  accuracyMeters                Decimal?         @db.Decimal(10, 2)
+  /// Controlled JSON array of involved people (structured IncidentPerson deferred)
+  peopleInvolved                Json?
+  /// Controlled JSON array of witnesses
+  witnesses                     Json?
+  weatherNotes                  String?
+  emergencyServicesContacted    Boolean          @default(false)
+  emergencyServiceDetails       String?
+  requiresImmediateNotification Boolean          @default(false)
+  escalationReason              String?
+  escalationTriggeredAt         DateTime?        @db.Timestamptz(3)
+  assignedSupervisorId          String?          @db.Uuid
+  acknowledgedAt                DateTime?        @db.Timestamptz(3)
+  dispatchedAt                  DateTime?        @db.Timestamptz(3)
+  investigationStartedAt        DateTime?        @db.Timestamptz(3)
+  resolvedAt                    DateTime?        @db.Timestamptz(3)
+  closedAt                      DateTime?        @db.Timestamptz(3)
+  resolutionSummary             String?
+  localIncidentId               String?
+  patrolAssignmentId            String?          @db.Uuid
+  createdAt                     DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt                     DateTime         @updatedAt @db.Timestamptz(3)
+  deletedAt                     DateTime?        @db.Timestamptz(3)
+
+  organisation       Organisation          @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  client             Client                @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  site               SecuritySite          @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  shift              Shift?                @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  assignment         Assignment?           @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  patrolAssignment   PatrolAssignment?     @relation(fields: [patrolAssignmentId], references: [id], onDelete: SetNull)
+  reportedByOfficer  OfficerProfile        @relation("IncidentReportingOfficer", fields: [reportedByOfficerId], references: [id], onDelete: Restrict)
+  reportedByUser     User                  @relation("IncidentReporterUser", fields: [reportedByUserId], references: [id], onDelete: Restrict)
+  assignedSupervisor User?                 @relation("IncidentAssignedSupervisor", fields: [assignedSupervisorId], references: [id], onDelete: SetNull)
+  statusEvents       IncidentStatusEvent[]
+  notes              IncidentNote[]
+  evidences          Evidence[]
+
+  @@unique([organisationId, incidentNumber])
+  @@unique([organisationId, localIncidentId])
+  @@index([organisationId, status, severity])
+  @@index([siteId, status])
+  @@index([reportedByOfficerId, reportedAtServer])
+  @@index([reportedAtServer])
+  @@index([assignedSupervisorId])
+  @@index([patrolAssignmentId])
+  @@index([deletedAt])
+  @@map("incidents")
+}
+
+model IncidentStatusEvent {
+  id             String          @id @default(uuid()) @db.Uuid
+  organisationId String          @db.Uuid
+  incidentId     String          @db.Uuid
+  previousStatus IncidentStatus?
+  newStatus      IncidentStatus
+  actorUserId    String?         @db.Uuid
+  note           String?
+  occurredAt     DateTime        @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  incident     Incident     @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  actorUser    User?        @relation("IncidentStatusActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([incidentId, occurredAt])
+  @@map("incident_status_events")
+}
+
+model IncidentNote {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organisationId String                 @db.Uuid
+  incidentId     String                 @db.Uuid
+  authorUserId   String                 @db.Uuid
+  visibility     IncidentNoteVisibility
+  body           String
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  deletedAt      DateTime?              @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  incident     Incident     @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  authorUser   User         @relation("IncidentNoteAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([incidentId, createdAt])
+  @@index([visibility])
+  @@map("incident_notes")
+}
+
+// =============================================================================
+// EVIDENCE (object-storage metadata only)
+// =============================================================================
+
+model Evidence {
+  id               String             @id @default(uuid()) @db.Uuid
+  organisationId   String             @db.Uuid
+  uploadedByUserId String             @db.Uuid
+  incidentId       String?            @db.Uuid
+  attendanceId     String?            @db.Uuid
+  patrolVisitId    String?            @db.Uuid
+  emergencyId      String?            @db.Uuid
+  supportRequestId String?            @db.Uuid
+  type             EvidenceType
+  status           EvidenceStatus     @default(PENDING_UPLOAD)
+  scanStatus       EvidenceScanStatus @default(NOT_SCANNED)
+  originalFileName String
+  storageProvider  String
+  storageBucket    String
+  storageKey       String             @unique
+  mimeType         String
+  sizeBytes        Int
+  checksum         String?
+  width            Int?
+  height           Int?
+  durationSeconds  Int?
+  capturedAtDevice DateTime?          @db.Timestamptz(3)
+  uploadedAt       DateTime?          @db.Timestamptz(3)
+  processedAt      DateTime?          @db.Timestamptz(3)
+  rejectedReason   String?
+  metadata         Json?
+  verified         Boolean            @default(false)
+  verifiedByUserId String?            @db.Uuid
+  verifiedAt       DateTime?          @db.Timestamptz(3)
+  deletedByUserId  String?            @db.Uuid
+  thumbnailKey     String?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime?          @db.Timestamptz(3)
+
+  organisation   Organisation    @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  uploadedByUser User            @relation("EvidenceUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  verifiedByUser User?           @relation("EvidenceVerifier", fields: [verifiedByUserId], references: [id], onDelete: SetNull)
+  deletedByUser  User?           @relation("EvidenceDeleter", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+  incident       Incident?       @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  attendance     Attendance?     @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+  patrolVisit    PatrolVisit?    @relation(fields: [patrolVisitId], references: [id], onDelete: SetNull)
+  emergency      Emergency?      @relation(fields: [emergencyId], references: [id], onDelete: SetNull)
+  supportRequest SupportRequest? @relation(fields: [supportRequestId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, status])
+  @@index([incidentId])
+  @@index([uploadedByUserId, createdAt])
+  @@index([attendanceId])
+  @@index([patrolVisitId])
+  @@index([emergencyId])
+  @@index([supportRequestId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("evidences")
+}
+
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+model Notification {
+  id              String               @id @default(uuid()) @db.Uuid
+  organisationId  String               @db.Uuid
+  recipientUserId String               @db.Uuid
+  type            NotificationType
+  priority        NotificationPriority @default(NORMAL)
+  title           String
+  body            String
+  data            Json?
+  readAt          DateTime?            @db.Timestamptz(3)
+  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
+  expiresAt       DateTime?            @db.Timestamptz(3)
+
+  organisation Organisation           @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  recipient    User                   @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  deliveries   NotificationDelivery[]
+
+  @@index([recipientUserId, readAt, createdAt])
+  @@index([organisationId, type])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id                String                     @id @default(uuid()) @db.Uuid
+  notificationId    String                     @db.Uuid
+  channel           NotificationChannel
+  status            NotificationDeliveryStatus @default(QUEUED)
+  providerMessageId String?
+  queuedAt          DateTime?                  @db.Timestamptz(3)
+  sentAt            DateTime?                  @db.Timestamptz(3)
+  deliveredAt       DateTime?                  @db.Timestamptz(3)
+  failedAt          DateTime?                  @db.Timestamptz(3)
+  failureReason     String?
+  attempts          Int                        @default(0)
+  createdAt         DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                   @updatedAt @db.Timestamptz(3)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId, channel])
+  @@index([status])
+  @@map("notification_deliveries")
+}
+
+model NotificationPreference {
+  id                          String   @id @default(uuid()) @db.Uuid
+  userId                      String   @unique @db.Uuid
+  inAppEnabled                Boolean  @default(true)
+  pushEnabled                 Boolean  @default(true)
+  smsEnabled                  Boolean  @default(false)
+  emailEnabled                Boolean  @default(true)
+  quietHoursEnabled           Boolean  @default(false)
+  quietHoursStart             String?
+  quietHoursEnd               String?
+  criticalAlertsAlwaysEnabled Boolean  @default(true)
+  createdAt                   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// =============================================================================
+// SOS EMERGENCIES
+// =============================================================================
+
+model Emergency {
+  id                   String          @id @default(uuid()) @db.Uuid
+  organisationId       String          @db.Uuid
+  emergencyNumber      String
+  officerId            String          @db.Uuid
+  userId               String          @db.Uuid
+  assignmentId         String?         @db.Uuid
+  shiftId              String?         @db.Uuid
+  siteId               String?         @db.Uuid
+  deviceId             String?         @db.Uuid
+  status               EmergencyStatus @default(CREATED)
+  latitude             Decimal         @db.Decimal(10, 7)
+  longitude            Decimal         @db.Decimal(10, 7)
+  accuracyMeters       Decimal?        @db.Decimal(10, 2)
+  deviceCreatedAt      DateTime        @db.Timestamptz(3)
+  serverCreatedAt      DateTime        @default(now()) @db.Timestamptz(3)
+  acknowledgedAt       DateTime?       @db.Timestamptz(3)
+  acknowledgedByUserId String?         @db.Uuid
+  respondingAt         DateTime?       @db.Timestamptz(3)
+  resolvedAt           DateTime?       @db.Timestamptz(3)
+  resolvedByUserId     String?         @db.Uuid
+  cancellationReason   String?
+  resolutionNotes      String?
+  localEmergencyId     String?
+  createdAt            DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime        @updatedAt @db.Timestamptz(3)
+
+  organisation   Organisation           @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  officer        OfficerProfile         @relation(fields: [officerId], references: [id], onDelete: Restrict)
+  user           User                   @relation("EmergencyUser", fields: [userId], references: [id], onDelete: Restrict)
+  assignment     Assignment?            @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  shift          Shift?                 @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  site           SecuritySite?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  device         Device?                @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  acknowledgedBy User?                  @relation("EmergencyAcknowledger", fields: [acknowledgedByUserId], references: [id], onDelete: SetNull)
+  resolvedBy     User?                  @relation("EmergencyResolver", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  statusEvents   EmergencyStatusEvent[]
+  evidences      Evidence[]
+
+  @@unique([organisationId, emergencyNumber])
+  @@unique([organisationId, localEmergencyId])
+  @@index([organisationId, status, serverCreatedAt])
+  @@index([officerId, serverCreatedAt])
+  @@index([siteId, status])
+  @@map("emergencies")
+}
+
+model EmergencyStatusEvent {
+  id             String           @id @default(uuid()) @db.Uuid
+  organisationId String           @db.Uuid
+  emergencyId    String           @db.Uuid
+  previousStatus EmergencyStatus?
+  newStatus      EmergencyStatus
+  actorUserId    String?          @db.Uuid
+  note           String?
+  occurredAt     DateTime         @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  emergency    Emergency    @relation(fields: [emergencyId], references: [id], onDelete: Restrict)
+  actorUser    User?        @relation("EmergencyStatusActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([emergencyId, occurredAt])
+  @@map("emergency_status_events")
+}
+
+// =============================================================================
+// SUPPORT
+// =============================================================================
+
+model SupportRequest {
+  id                String                 @id @default(uuid()) @db.Uuid
+  organisationId    String                 @db.Uuid
+  requestNumber     String
+  userId            String                 @db.Uuid
+  subject           String
+  description       String
+  category          SupportRequestCategory @default(GENERAL)
+  priority          SupportRequestPriority @default(NORMAL)
+  status            SupportRequestStatus   @default(OPEN)
+  assignedToUserId  String?                @db.Uuid
+  deviceDiagnostics Json?
+  createdAt         DateTime               @default(now()) @db.Timestamptz(3)
+  acknowledgedAt    DateTime?              @db.Timestamptz(3)
+  resolvedAt        DateTime?              @db.Timestamptz(3)
+  closedAt          DateTime?              @db.Timestamptz(3)
+  updatedAt         DateTime               @updatedAt @db.Timestamptz(3)
+
+  organisation Organisation     @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  user         User             @relation("SupportRequestAuthor", fields: [userId], references: [id], onDelete: Restrict)
+  assignedTo   User?            @relation("SupportRequestAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  messages     SupportMessage[]
+  evidences    Evidence[]
+
+  @@unique([organisationId, requestNumber])
+  @@index([organisationId, status])
+  @@index([userId, createdAt])
+  @@map("support_requests")
+}
+
+model SupportMessage {
+  id               String   @id @default(uuid()) @db.Uuid
+  organisationId   String   @db.Uuid
+  supportRequestId String   @db.Uuid
+  authorUserId     String   @db.Uuid
+  body             String
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  supportRequest SupportRequest @relation(fields: [supportRequestId], references: [id], onDelete: Cascade)
+  authorUser     User           @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([supportRequestId, createdAt])
+  @@index([organisationId])
+  @@map("support_messages")
+}
+
+model FaqArticle {
+  id             String    @id @default(uuid()) @db.Uuid
+  organisationId String?   @db.Uuid
+  category       String
+  question       String
+  answer         String
+  sortOrder      Int       @default(0)
+  published      Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt      DateTime? @db.Timestamptz(3)
+
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, published])
+  @@index([deletedAt])
+  @@map("faq_articles")
+}
+
+// =============================================================================
+// IDEMPOTENCY & SYNC
+// =============================================================================
+
+model IdempotencyRecord {
+  id             String              @id @default(uuid()) @db.Uuid
+  organisationId String?             @db.Uuid
+  userId         String?             @db.Uuid
+  key            String
+  operation      String
+  requestHash    String
+  status         SyncOperationStatus @default(RECEIVED)
+  httpStatus     Int?
+  responseBody   Json?
+  resourceType   String?
+  resourceId     String?             @db.Uuid
+  lockedUntil    DateTime?           @db.Timestamptz(3)
+  expiresAt      DateTime            @db.Timestamptz(3)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, key])
+  @@index([expiresAt, status])
+  @@index([organisationId, operation])
+  @@map("idempotency_records")
+}
+
+model SyncConflict {
+  id               String    @id @default(uuid()) @db.Uuid
+  organisationId   String    @db.Uuid
+  userId           String    @db.Uuid
+  operationId      String
+  entityType       String
+  localEntityId    String?
+  serverEntityId   String?   @db.Uuid
+  reasonCode       String
+  message          String
+  localPayload     Json?
+  serverPayload    Json?
+  resolvedAt       DateTime? @db.Timestamptz(3)
+  resolvedByUserId String?   @db.Uuid
+  resolution       String?
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  user         User         @relation("SyncConflictUser", fields: [userId], references: [id], onDelete: Restrict)
+  resolvedBy   User?        @relation("SyncConflictResolver", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, userId])
+  @@index([operationId])
+  @@index([resolvedAt])
+  @@map("sync_conflicts")
+}
+
+model SyncOperation {
+  id               String              @id @default(uuid()) @db.Uuid
+  organisationId   String              @db.Uuid
+  userId           String              @db.Uuid
+  deviceId         String?             @db.Uuid
+  operationId      String
+  operationType    String
+  entityType       String
+  status           SyncOperationStatus @default(RECEIVED)
+  attemptCount     Int                 @default(0)
+  lastErrorCode    String?
+  lastErrorMessage String?
+  receivedAt       DateTime            @default(now()) @db.Timestamptz(3)
+  processedAt      DateTime?           @db.Timestamptz(3)
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  device       Device?      @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, operationId])
+  @@index([organisationId, status])
+  @@index([deviceId, receivedAt])
+  @@map("sync_operations")
+}
+
+// =============================================================================
+// AUDIT
+// =============================================================================
+
+model AuditLog {
+  id             String      @id @default(uuid()) @db.Uuid
+  organisationId String?     @db.Uuid
+  actorUserId    String?     @db.Uuid
+  action         AuditAction
+  entityType     String
+  entityId       String?     @db.Uuid
+  requestId      String?
+  ipAddress      String?
+  userAgent      String?
+  beforeData     Json?
+  afterData      Json?
+  metadata       Json?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  actorUser    User?         @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
