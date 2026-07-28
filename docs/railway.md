@@ -14,7 +14,38 @@ project** and reference that Postgres service.
    - Start: `npx prisma migrate deploy && node dist/src/main.js`
    - Healthcheck: `GET /api/v1/health/live`
 
-## 2) Connect Postgres (critical)
+## Fix for empty DATABASE_URL (current failure)
+
+If deploy logs show:
+
+```text
+DATABASE_URL (or DATABASE_PUBLIC_URL) is required
+```
+
+the API service has **no database URL injected**. Fix it in Railway UI:
+
+### Option A (recommended, fastest)
+
+1. Open **Postgres** service → **Variables**
+2. Click the **eye** on `DATABASE_PUBLIC_URL`, then **Copy**
+3. Open **API** service → **Variables**
+4. Add/Edit `DATABASE_URL`
+5. Paste the copied public URL value (raw connection string)
+6. Redeploy API
+
+### Option B (Variable Reference)
+
+1. Open **API** service → **Variables**
+2. **+ New Variable** → **Add Reference**
+3. Service: your Postgres service (exact name in Railway)
+4. Variable: `DATABASE_PUBLIC_URL`
+5. Make sure the variable name on the API side is `DATABASE_URL`
+6. Redeploy
+
+Important:
+- References only work when both services are in the **same project + same environment**
+- Pasting the literal text `${{Postgres.DATABASE_URL}}` as a normal string does **not** resolve unless created as a Railway **Reference**
+- Never use `localhost`
 
 On the **API service → Variables**:
 

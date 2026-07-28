@@ -21,22 +21,49 @@ function withPublicSchema(url: string): string {
   return url.includes('?') ? `${url}&schema=public` : `${url}?schema=public`;
 }
 
+function stripQueryParam(url: string, key: string): string {
+  const [base, query = ''] = url.split('?');
+  if (!query) return url;
+  const kept = query
+    .split('&')
+    .filter((part) => part && !part.toLowerCase().startsWith(`${key.toLowerCase()}=`));
+  return kept.length ? `${base}?${kept.join('&')}` : base;
+}
+
+function isRailwayPublicProxy(url: string): boolean {
+  return /rlwy\.net|proxy\.rlwy\.net|railway\.app/i.test(url);
+}
+
 /**
- * Railway public proxy hosts require TLS. Private `*.railway.internal` URLs do not.
+ * Prepare a connection string + SSL options for node-postgres.
+ *
+ * Newer `pg` treats `sslmode=require` as `verify-full`, which breaks Railway's
+ * public proxy certificates. For those hosts we strip sslmode and explicitly
+ * set `ssl: { rejectUnauthorized: false }`.
  */
-function resolvePoolSsl(
-  url: string,
-): { rejectUnauthorized: boolean } | undefined {
-  if (/sslmode=disable/i.test(url)) {
-    return undefined;
+function preparePgPoolConfig(url: string): {
+  connectionString: string;
+  ssl?: { rejectUnauthorized: boolean };
+} {
+  let connectionString = withPublicSchema(url);
+  const forceDisable = /sslmode=disable/i.test(connectionString);
+  const wantsTls =
+    !forceDisable &&
+    (isRailwayPublicProxy(connectionString) ||
+      /sslmode=require|sslmode=verify/i.test(connectionString));
+
+  // Avoid URL sslmode conflicting with Pool ssl options.
+  connectionString = stripQueryParam(connectionString, 'sslmode');
+  connectionString = stripQueryParam(connectionString, 'uselibpqcompat');
+
+  if (!wantsTls || forceDisable) {
+    return { connectionString };
   }
-  if (/sslmode=require/i.test(url)) {
-    return { rejectUnauthorized: false };
-  }
-  if (/railway\.app|rlwy\.net|proxy\.rlwy\.net/i.test(url)) {
-    return { rejectUnauthorized: false };
-  }
-  return undefined;
+
+  return {
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+  };
 }
 
 @Injectable()
@@ -57,15 +84,17 @@ export class PrismaService
     }
 
     const directPostgres = isDirectPostgresUrl(connectionString);
-    // PrismaPg requires a direct TCP URL. prisma+postgres:// is CLI/Accelerate only.
-    const adapterUrl = directPostgres
-      ? withPublicSchema(connectionString)
-      : 'postgresql://127.0.0.1:1/guardtrak_unconfigured';
+    const prepared = directPostgres
+      ? preparePgPoolConfig(connectionString)
+      : {
+          connectionString:
+            'postgresql://127.0.0.1:1/guardtrak_unconfigured',
+        };
 
     const pool = new Pool({
-      connectionString: adapterUrl,
-      ssl: resolvePoolSsl(adapterUrl),
-      connectionTimeoutMillis: 10_000,
+      connectionString: prepared.connectionString,
+      ...(prepared.ssl ? { ssl: prepared.ssl } : {}),
+      connectionTimeoutMillis: 15_000,
       idleTimeoutMillis: 30_000,
       max: 10,
     });
@@ -103,14 +132,18 @@ export class PrismaService
       await this.$connect();
       const healthy = await this.isHealthy();
       if (!healthy) {
-        throw new Error('Database ping failed after connect');
+        throw new Error(
+          'Database ping failed after connect (check SSL / DATABASE_URL)',
+        );
       }
       this.connected = true;
       this.logger.log('Prisma connected to PostgreSQL');
     } catch (error) {
       this.connected = false;
       this.logger.error(
-        'Prisma failed to connect to PostgreSQL',
+        `Prisma failed to connect to PostgreSQL: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
         error instanceof Error ? error.stack : undefined,
       );
 
