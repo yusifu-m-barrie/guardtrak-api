@@ -24,8 +24,10 @@ COPY --from=build /app/generated ./generated
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/scripts/railway-start.sh ./scripts/railway-start.sh
+RUN chmod +x ./scripts/railway-start.sh
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
   CMD curl -fsS http://127.0.0.1:3000/api/v1/health/live || exit 1
-# Apply pending migrations on boot (safe/idempotent), then start the API.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]
+# Apply pending migrations (with retries / public-URL fallback), then start the API.
+CMD ["sh", "./scripts/railway-start.sh"]

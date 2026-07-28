@@ -20,24 +20,42 @@ On the **API service → Variables**:
 
 1. Click **Add Variable** → **Add Reference**
 2. Choose your **Postgres** service
-3. Select **`DATABASE_URL`** (private / internal) — **not** `DATABASE_PUBLIC_URL`
+3. Prefer **`DATABASE_URL`** (private / internal)
 
-This is the preferred live setting:
+Also add a second reference for fallback:
 
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+DATABASE_PUBLIC_URL=${{Postgres.DATABASE_PUBLIC_URL}}
 ```
+
+The boot script (`scripts/railway-start.sh`) will:
+1. Try private `DATABASE_URL` first
+2. If `postgres.railway.internal` is unreachable, automatically switch to `DATABASE_PUBLIC_URL`
+3. Retry migrations before starting Nest
+
+### If healthcheck still fails with P1001
+
+Force the public URL on the API service:
+
+```env
+USE_DATABASE_PUBLIC_URL=true
+DATABASE_PUBLIC_URL=${{Postgres.DATABASE_PUBLIC_URL}}
+DATABASE_URL=${{Postgres.DATABASE_PUBLIC_URL}}
+```
+
+Also verify:
+- API and Postgres are in the **same Railway project and environment**
+- Postgres service is **Running** (not paused)
+- You did **not** hardcode `localhost`
 
 ### Why not localhost / public URL?
 
 | Source | Use? |
 |--------|------|
 | `localhost:5432` | ❌ Never on Railway |
-| Postgres `DATABASE_URL` (private) | ✅ Yes — same project |
-| Postgres `DATABASE_PUBLIC_URL` | Only if API is outside Railway; needs TLS |
-
-You do **not** need to copy `PGHOST` / `PGUSER` / `PGPASSWORD` separately if
-`DATABASE_URL` is referenced — that URL already contains them.
+| Postgres `DATABASE_URL` (private) | ✅ Preferred when private networking works |
+| Postgres `DATABASE_PUBLIC_URL` | ✅ Fallback / force when private DNS fails |
 
 ## 3) Set required production variables
 
@@ -110,7 +128,7 @@ npm run prisma:seed
 | `AUTH_ALLOW_DEV_OTP_OUTPUT must be disabled` | Set `false` |
 | `STORAGE_PROVIDER=local is not allowed` | Set `STORAGE_ALLOW_EPHEMERAL=true` or use S3/R2 |
 | `TRUST_PROXY must be true` | Set `TRUST_PROXY=true` |
-| DB connection refused / timeout | Use private `DATABASE_URL` reference; ensure services share a project |
+| DB connection refused / timeout / `P1001` `postgres.railway.internal` | Add `DATABASE_PUBLIC_URL` reference and set `USE_DATABASE_PUBLIC_URL=true` (or set `DATABASE_URL` to public URL). Confirm Postgres is Running in same environment. |
 | Migrate fails | Confirm `DATABASE_URL` is present at runtime; check Postgres is running |
 | CORS blocked in browser | Add dashboard origin to `CORS_ORIGINS` |
 

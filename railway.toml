@@ -3,9 +3,10 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Ensure schema exists before the Nest process accepts traffic.
-startCommand = "npx prisma migrate deploy && node dist/src/main.js"
+# Retries migrate and can fall back from private → public DB URL.
+startCommand = "sh ./scripts/railway-start.sh"
 healthcheckPath = "/api/v1/health/live"
-healthcheckTimeout = 60
+# Give migrate retries + Nest boot enough time before Railway fails the check.
+healthcheckTimeout = 180
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 5
+restartPolicyMaxRetries = 8
