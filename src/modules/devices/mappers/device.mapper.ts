@@ -12,6 +12,7 @@ export interface DeviceResponse {
   operatingSystemVersion: string | null;
   appVersion: string | null;
   status: string;
+  trustScore: number | null;
   trustedAt: string | null;
   revokedAt: string | null;
   lastSeenAt: string | null;
@@ -32,6 +33,7 @@ export function toDeviceResponse(device: Device): DeviceResponse {
     operatingSystemVersion: device.operatingSystemVersion,
     appVersion: device.appVersion,
     status: device.status,
+    trustScore: device.trustScore ?? null,
     trustedAt: device.trustedAt?.toISOString() ?? null,
     revokedAt: device.revokedAt?.toISOString() ?? null,
     lastSeenAt: device.lastSeenAt?.toISOString() ?? null,

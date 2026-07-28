@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { AuditAction } from '../../../generated/prisma/client';
+﻿import { Injectable } from '@nestjs/common';
+import { AuditAction, Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { ErrorCode } from '../../common/constants/error-codes';
 import {
@@ -16,6 +16,11 @@ import {
 } from '../../common/utils/normalize.util';
 import { mapOrganisationSummary } from './mappers/organisation.mapper';
 import type { UpdateOrganisationDto } from './dto/update-organisation.dto';
+import type { UpdateOrganisationSettingsDto } from './dto/update-organisation-settings.dto';
+import {
+  mergeOrganisationSettings,
+  DEFAULT_ORGANISATION_SETTINGS,
+} from './organisation-settings.defaults';
 
 export interface AuditRequestContext {
   ipAddress?: string | null;
@@ -97,6 +102,54 @@ export class OrganisationsService {
     });
 
     return mapOrganisationSummary(updated);
+  }
+
+  async getSettings(actor: RequestUser) {
+    const organisationId = requireOrganisationId(actor);
+    const organisation = await this.findActiveOrganisation(organisationId);
+    return mergeOrganisationSettings(
+      organisation.settings ?? DEFAULT_ORGANISATION_SETTINGS,
+      {},
+    );
+  }
+
+  async updateSettings(
+    actor: RequestUser,
+    dto: UpdateOrganisationSettingsDto,
+    ctx: AuditRequestContext,
+  ) {
+    const organisationId = requireOrganisationId(actor);
+    const existing = await this.findActiveOrganisation(organisationId);
+    const merged = mergeOrganisationSettings(
+      existing.settings,
+      dto as Record<string, unknown>,
+    );
+
+    const updated = await this.prisma.organisation.update({
+      where: { id: existing.id },
+      data: {
+        settings: merged as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.authAuditService.record({
+      organisationId,
+      actorUserId: actor.id,
+      action: AuditAction.UPDATE,
+      entityType: 'OrganisationSettings',
+      entityId: updated.id,
+      requestId: ctx.requestId,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      metadata: {
+        changedSections: Object.keys(dto).filter(
+          (key) =>
+            dto[key as keyof UpdateOrganisationSettingsDto] !== undefined,
+        ),
+      },
+    });
+
+    return mergeOrganisationSettings(updated.settings, {});
   }
 
   private async findActiveOrganisation(organisationId: string) {

@@ -6,7 +6,16 @@ import type {
 } from '../../../../generated/prisma/client';
 import { CheckpointVerificationMethod } from '../../../../generated/prisma/client';
 
-type SiteSummary = Pick<SecuritySite, 'id' | 'name' | 'code' | 'status'> & {
+type SiteSummary = Pick<
+  SecuritySite,
+  | 'id'
+  | 'name'
+  | 'code'
+  | 'status'
+  | 'latitude'
+  | 'longitude'
+  | 'checkpointDefaultRadiusMeters'
+> & {
   client?: Pick<Client, 'id' | 'name' | 'status'> | null;
 };
 
@@ -21,6 +30,8 @@ type CheckpointSummary = Pick<
   | 'active'
   | 'allowedRadiusMeters'
   | 'qrCodeHash'
+  | 'latitude'
+  | 'longitude'
 >;
 
 function qrRequired(method: CheckpointVerificationMethod): boolean {
@@ -57,6 +68,10 @@ export function toPatrolRouteResponse(
           name: route.site.name,
           code: route.site.code,
           status: route.site.status,
+          latitude: Number(route.site.latitude),
+          longitude: Number(route.site.longitude),
+          checkpointDefaultRadiusMeters:
+            route.site.checkpointDefaultRadiusMeters,
           client: route.site.client
             ? {
                 id: route.site.client.id,
@@ -78,6 +93,8 @@ export function toPatrolRouteResponse(
         requiresNote: cp.requiresNote,
         active: cp.active,
         allowedRadiusMeters: cp.allowedRadiusMeters,
+        latitude: Number(cp.latitude),
+        longitude: Number(cp.longitude),
         qrRequired: qrRequired(cp.verificationMethod),
       })),
     activeAssignmentCount: route._count?.assignments,

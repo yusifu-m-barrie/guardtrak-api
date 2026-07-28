@@ -74,6 +74,11 @@ export default (): GuardTrakConfig => {
         process.env.AUTH_NEW_DEVICE_AUTO_APPROVE,
         nodeEnv === 'development' || nodeEnv === 'test',
       ),
+      // Strict 1-installation → 1-account binding (production/staging only by default).
+      enforceDeviceOwnership: parseBoolean(
+        process.env.AUTH_ENFORCE_DEVICE_OWNERSHIP,
+        nodeEnv === 'production' || nodeEnv === 'staging',
+      ),
       passwordHistoryCount: Number.parseInt(
         process.env.AUTH_PASSWORD_HISTORY_COUNT ?? '5',
         10,
@@ -89,7 +94,8 @@ export default (): GuardTrakConfig => {
     },
     cors: {
       origins: parseCorsOrigins(
-        process.env.CORS_ORIGINS ?? 'http://localhost:3000',
+        process.env.CORS_ORIGINS ??
+          'http://localhost:3000,http://localhost:3001,http://localhost:5173',
       ),
     },
     rateLimit: {
@@ -226,7 +232,7 @@ export default (): GuardTrakConfig => {
       corsOrigins: parseCorsOrigins(
         process.env.WS_CORS_ORIGINS ??
           process.env.CORS_ORIGINS ??
-          'http://localhost:3000,http://localhost:5173',
+          'http://localhost:3000,http://localhost:3001,http://localhost:5173',
       ),
     },
     observability: {

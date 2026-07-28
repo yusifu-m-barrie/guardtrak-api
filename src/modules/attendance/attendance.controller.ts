@@ -7,8 +7,18 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import type { Request } from 'express';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -50,6 +60,42 @@ export class AttendanceController {
     return this.attendanceService.clockOut(user, dto, this.ctx(req));
   }
 
+  @Post('selfie')
+  @Permissions('attendance:clock-in:self')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        purpose: { type: 'string', enum: ['clock-in', 'clock-out'] },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiOperation({
+    summary: 'Upload attendance selfie evidence (pass evidenceId on clock-in/out)',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10_485_760 },
+    }),
+  )
+  uploadSelfie(
+    @CurrentUser() user: RequestUser,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('purpose') purpose: 'clock-in' | 'clock-out' | undefined,
+    @Req() req: Request & { requestId?: string },
+  ) {
+    return this.attendanceService.uploadSelfie(
+      user,
+      file,
+      this.ctx(req),
+      purpose === 'clock-out' ? 'clock-out' : 'clock-in',
+    );
+  }
+
   @Get('current')
   @Permissions('attendance:read:self')
   @ApiOperation({ summary: 'Current active attendance for officer' })
@@ -84,6 +130,17 @@ export class AttendanceController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.attendanceService.findOne(user, id);
+  }
+
+  @Get(':id/evidence')
+  @ApiOperation({
+    summary: 'List clock-in/out selfie evidence for an attendance record',
+  })
+  listEvidence(
+    @CurrentUser() user: RequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.attendanceService.listEvidence(user, id);
   }
 
   @Post(':id/request-review')

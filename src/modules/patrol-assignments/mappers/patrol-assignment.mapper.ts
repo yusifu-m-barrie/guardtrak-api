@@ -1,9 +1,12 @@
 import type {
+  OfficerProfile,
   PatrolAssignment,
   PatrolAssignmentCheckpoint,
   PatrolRoute,
   PatrolVisit,
   SecuritySite,
+  Shift,
+  User,
 } from '../../../../generated/prisma/client';
 import { CheckpointVerificationMethod } from '../../../../generated/prisma/client';
 import type { PatrolProgressResult } from '../../patrols/patrol-progress.service';
@@ -14,6 +17,25 @@ function qrRequired(method: CheckpointVerificationMethod): boolean {
     method === CheckpointVerificationMethod.GPS_AND_QR
   );
 }
+
+function decimalToNumber(
+  value: { toString(): string } | number | null | undefined,
+): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return Number(value);
+}
+
+type OfficerWithUser = Pick<
+  OfficerProfile,
+  'id' | 'officerNumber' | 'employmentStatus'
+> & {
+  user?: Pick<
+    User,
+    'id' | 'employeeId' | 'firstName' | 'lastName' | 'displayName' | 'avatarUrl'
+  > | null;
+};
 
 export function toSnapshotResponse(snap: PatrolAssignmentCheckpoint) {
   return {
@@ -42,17 +64,49 @@ export function toPatrolAssignmentResponse(
       'id' | 'name' | 'status' | 'requireSequentialCompletion'
     > | null;
     site?: Pick<SecuritySite, 'id' | 'name' | 'code' | 'status'> | null;
+    officer?: OfficerWithUser | null;
+    shift?: Pick<
+      Shift,
+      'id' | 'title' | 'status' | 'scheduledStartAt' | 'scheduledEndAt'
+    > | null;
     checkpointSnapshots?: PatrolAssignmentCheckpoint[];
-    visits?: Pick<
+    visits?: (Pick<
       PatrolVisit,
-      'id' | 'assignmentCheckpointId' | 'status' | 'patrolCheckpointId'
-    >[];
+      | 'id'
+      | 'assignmentCheckpointId'
+      | 'status'
+      | 'patrolCheckpointId'
+      | 'visitedAtServer'
+      | 'latitude'
+      | 'longitude'
+    > & {})[];
+    events?: {
+      actorUserId: string | null;
+      createdAt: Date;
+      actorUser?: Pick<
+        User,
+        | 'id'
+        | 'firstName'
+        | 'lastName'
+        | 'displayName'
+        | 'employeeId'
+        | 'role'
+      > | null;
+    }[];
   },
   progress?: PatrolProgressResult | null,
 ) {
   const snapshots = assignment.checkpointSnapshots
     ?.slice()
     .sort((a, b) => a.sequence - b.sequence);
+
+  const latestVisit = [...(assignment.visits ?? [])]
+    .filter((v) => v.visitedAtServer)
+    .sort(
+      (a, b) =>
+        new Date(b.visitedAtServer!).getTime() -
+        new Date(a.visitedAtServer!).getTime(),
+    )[0];
 
   return {
     id: assignment.id,
@@ -77,6 +131,19 @@ export function toPatrolAssignmentResponse(
     cancelledByUserId: assignment.cancelledByUserId,
     createdAt: assignment.createdAt.toISOString(),
     updatedAt: assignment.updatedAt.toISOString(),
+    createdBy: (() => {
+      const createEvent = assignment.events?.[0];
+      const actor = createEvent?.actorUser;
+      if (!actor) return undefined;
+      return {
+        id: actor.id,
+        firstName: actor.firstName,
+        lastName: actor.lastName,
+        displayName: actor.displayName,
+        employeeId: actor.employeeId,
+        role: actor.role,
+      };
+    })(),
     route: assignment.patrolRoute
       ? {
           id: assignment.patrolRoute.id,
@@ -94,7 +161,50 @@ export function toPatrolAssignmentResponse(
           status: assignment.site.status,
         }
       : undefined,
+    officer: assignment.officer
+      ? {
+          id: assignment.officer.id,
+          officerNumber: assignment.officer.officerNumber,
+          employmentStatus: assignment.officer.employmentStatus,
+          user: assignment.officer.user
+            ? {
+                id: assignment.officer.user.id,
+                employeeId: assignment.officer.user.employeeId,
+                firstName: assignment.officer.user.firstName,
+                lastName: assignment.officer.user.lastName,
+                displayName: assignment.officer.user.displayName,
+                avatarUrl: assignment.officer.user.avatarUrl,
+              }
+            : null,
+        }
+      : undefined,
+    shift: assignment.shift
+      ? {
+          id: assignment.shift.id,
+          title: assignment.shift.title,
+          status: assignment.shift.status,
+          scheduledStartAt: assignment.shift.scheduledStartAt.toISOString(),
+          scheduledEndAt: assignment.shift.scheduledEndAt.toISOString(),
+        }
+      : undefined,
     checkpoints: snapshots?.map((s) => toSnapshotResponse(s)),
+    visits: assignment.visits?.map((visit) => ({
+      id: visit.id,
+      assignmentCheckpointId: visit.assignmentCheckpointId,
+      patrolCheckpointId: visit.patrolCheckpointId,
+      status: visit.status,
+      visitedAtServer: visit.visitedAtServer?.toISOString() ?? null,
+      latitude: decimalToNumber(visit.latitude),
+      longitude: decimalToNumber(visit.longitude),
+    })),
+    currentLocation:
+      latestVisit?.latitude != null && latestVisit.longitude != null
+        ? {
+            latitude: Number(latestVisit.latitude),
+            longitude: Number(latestVisit.longitude),
+            at: latestVisit.visitedAtServer?.toISOString() ?? null,
+          }
+        : null,
     progress: progress
       ? {
           totalCheckpoints: progress.totalCheckpoints,
@@ -105,7 +215,10 @@ export function toPatrolAssignmentResponse(
           reviewRequiredCheckpoints: progress.reviewRequiredCheckpoints,
           completionPercentage: progress.completionPercentage,
           nextCheckpointId: progress.nextCheckpoint?.id ?? null,
+          nextCheckpointName: progress.nextCheckpoint?.name ?? null,
+          nextCheckpointSequence: progress.nextCheckpoint?.sequence ?? null,
           allRequiredComplete: progress.allRequiredComplete,
+          sequentialViolation: progress.skippedCheckpoints > 0,
         }
       : undefined,
   };

@@ -24,8 +24,10 @@ import { trimOrUndefined } from '../../common/utils/normalize.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
 import type { ServiceRequestContext } from '../clients/clients.types';
+import { AssignmentAccessService } from '../assignments/assignment-access.service';
 import { ACTIVE_ASSIGNMENT_STATUSES } from '../assignments/assignment-transitions.util';
 import { rangesOverlap } from '../assignments/assignment-overlap.util';
+import { toAssignmentResponse } from '../assignments/mappers/assignment.mapper';
 import type { CreateShiftDto } from './dto/create-shift.dto';
 import type { ListShiftsQueryDto } from './dto/list-shifts-query.dto';
 import type { UpdateShiftDto } from './dto/update-shift.dto';
@@ -64,6 +66,7 @@ export class ShiftsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuthAuditService,
     private readonly configService: ConfigService,
+    private readonly assignmentAccess: AssignmentAccessService,
   ) {}
 
   async create(
@@ -262,6 +265,93 @@ export class ShiftsService {
       canReadOrg || userHasPermission(user, 'assignment:read');
 
     return toShiftResponse(shift, { includeAssignments });
+  }
+
+  async getAssignmentForShift(user: RequestUser, shiftId: string) {
+    const organisationId = requireOrganisationId(user);
+    // Ensures tenant + self access to the shift (404 if not visible).
+    await this.findOne(user, shiftId);
+
+    const officerId = await this.assignmentAccess.resolveOfficerProfileId(
+      user,
+      organisationId,
+    );
+
+    const assignment = await this.prisma.assignment.findFirst({
+      where: {
+        organisationId,
+        shiftId,
+        officerId,
+      },
+      include: {
+        officer: {
+          select: {
+            id: true,
+            officerNumber: true,
+            employmentStatus: true,
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                employeeId: true,
+              },
+            },
+          },
+        },
+        supervisor: {
+          select: {
+            id: true,
+            supervisorNumber: true,
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                employeeId: true,
+              },
+            },
+          },
+        },
+        shift: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            scheduledStartAt: true,
+            scheduledEndAt: true,
+            siteId: true,
+            gracePeriodMinutes: true,
+            site: {
+              select: {
+                id: true,
+                clientId: true,
+                name: true,
+                code: true,
+                address: true,
+                latitude: true,
+                longitude: true,
+                clockInRadiusMeters: true,
+                clockOutRadiusMeters: true,
+                checkpointDefaultRadiusMeters: true,
+                minimumGpsAccuracyMeters: true,
+                clockInOutsideGeofencePolicy: true,
+                clockOutOutsideGeofencePolicy: true,
+                requiresClockInSelfie: true,
+                requiresClockOutSelfie: true,
+                requiresPatrol: true,
+                requiresFinalShiftNote: true,
+                instructions: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { assignedAt: 'desc' },
+    });
+
+    return assignment ? toAssignmentResponse(assignment) : null;
   }
 
   async update(

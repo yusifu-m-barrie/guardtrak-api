@@ -31,6 +31,10 @@ describe('NotificationsService unread count helper', () => {
         organisationId: 'org1',
         recipientUserId: 'u1',
         readAt: null,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: expect.any(Date) as unknown as Date } },
+        ],
       },
     });
   });

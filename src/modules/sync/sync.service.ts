@@ -18,6 +18,7 @@ import { EmergenciesService } from '../emergencies/emergencies.service';
 import type { CreateSosDto } from '../emergencies/dto/create-sos.dto';
 import { IncidentsService } from '../incidents/incidents.service';
 import type { CreateIncidentDto } from '../incidents/dto/create-incident.dto';
+import type { UpdateIncidentDto } from '../incidents/dto/update-incident.dto';
 import { SupportService } from '../support/support.service';
 import type { CreateSupportRequestDto } from '../support/dto/create-support-request.dto';
 import type { SyncBatchDto, SyncOperationDto } from './dto/sync-batch.dto';
@@ -215,6 +216,16 @@ export class SyncService {
         )) as { id: string };
         return created.id;
       }
+      case 'incident.update': {
+        const { id, dto } = this.asIncidentUpdate(op);
+        const updated = (await this.incidentsService.update(
+          user,
+          id,
+          dto,
+          ctx,
+        )) as { id: string };
+        return updated.id;
+      }
       case 'emergency.sos': {
         const dto = this.asSosDto(op);
         const created = (await this.emergenciesService.createSos(
@@ -283,6 +294,53 @@ export class SyncService {
         op.localEntityId ?? this.optionalString(p, 'localIncidentId'),
       idempotencyKey: op.operationId,
     };
+  }
+
+  private asIncidentUpdate(op: SyncOperationDto): {
+    id: string;
+    dto: UpdateIncidentDto;
+  } {
+    const p = op.payload;
+    const id =
+      this.optionalString(p, 'incidentId') ??
+      this.optionalString(p, 'id') ??
+      op.localEntityId;
+    if (!id) {
+      throw new AppException(
+        'Invalid incident.update payload: incidentId required',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.SYNC_PAYLOAD_INVALID,
+      );
+    }
+    const dto: UpdateIncidentDto = {};
+    const title = this.optionalString(p, 'title');
+    const description = this.optionalString(p, 'description');
+    const actionsTaken = this.optionalString(p, 'actionsTaken');
+    const category = this.optionalString(p, 'category');
+    const severity = this.optionalString(p, 'severity');
+    const priority = this.optionalString(p, 'priority');
+    const weatherNotes = this.optionalString(p, 'weatherNotes');
+    if (title !== undefined) dto.title = title;
+    if (description !== undefined) dto.description = description;
+    if (actionsTaken !== undefined) dto.actionsTaken = actionsTaken;
+    if (category !== undefined) {
+      dto.category = category as UpdateIncidentDto['category'];
+    }
+    if (severity !== undefined) {
+      dto.severity = severity as UpdateIncidentDto['severity'];
+    }
+    if (priority !== undefined) {
+      dto.priority = priority as UpdateIncidentDto['priority'];
+    }
+    if (weatherNotes !== undefined) dto.weatherNotes = weatherNotes;
+    if (Object.keys(dto).length === 0) {
+      throw new AppException(
+        'Invalid incident.update payload: no fields to update',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.SYNC_PAYLOAD_INVALID,
+      );
+    }
+    return { id, dto };
   }
 
   private asSosDto(op: SyncOperationDto): CreateSosDto {

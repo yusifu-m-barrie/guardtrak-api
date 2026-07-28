@@ -1,5 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import {
   AssignmentStatus,
   AttendanceEventType,
@@ -7,12 +8,15 @@ import {
   AuditAction,
   BreakStatus,
   DeviceStatus,
+  EvidenceStatus,
+  EvidenceType,
   GeofencePolicy,
   Prisma,
   ShiftStatus,
 } from '../../../generated/prisma/client';
 import { AppException } from '../../common/exceptions/app.exception';
 import { ErrorCode } from '../../common/constants/error-codes';
+import { UserRole as AppUserRole } from '../../common/enums/user-role.enum';
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
 import { hashRequestPayload } from '../../common/idempotency/request-hash.util';
@@ -30,6 +34,12 @@ import { trimOrUndefined } from '../../common/utils/normalize.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AssignmentAccessService } from '../assignments/assignment-access.service';
 import type { ServiceRequestContext } from '../clients/clients.types';
+import { toEvidenceResponse } from '../evidence/mappers/evidence.mapper';
+import { LocalStorageProvider } from '../storage/local-storage.provider';
+import {
+  STORAGE_PROVIDER,
+  type StorageProvider,
+} from '../storage/storage.types';
 import { AttendanceAuditService } from './attendance-audit.service';
 import { AttendanceCalculationService } from './attendance-calculation.service';
 import {
@@ -52,7 +62,33 @@ const ATTENDANCE_SORT_FIELDS = [
 ] as const;
 
 const ATTENDANCE_INCLUDE = {
-  assignment: { select: { id: true, status: true, officerId: true } },
+  assignment: {
+    select: {
+      id: true,
+      status: true,
+      officerId: true,
+      supervisorId: true,
+    },
+  },
+  officer: {
+    select: {
+      id: true,
+      officerNumber: true,
+      employmentStatus: true,
+      user: {
+        select: {
+          id: true,
+          employeeId: true,
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          avatarUrl: true,
+          email: true,
+          phone: true,
+        },
+      },
+    },
+  },
   shift: {
     select: {
       id: true,
@@ -65,7 +101,28 @@ const ATTENDANCE_INCLUDE = {
       overtimeThresholdMinutes: true,
     },
   },
-  site: { select: { id: true, name: true, code: true } },
+  site: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      address: true,
+      latitude: true,
+      longitude: true,
+      clockInRadiusMeters: true,
+      clockOutRadiusMeters: true,
+      checkpointDefaultRadiusMeters: true,
+      clockInOutsideGeofencePolicy: true,
+      clockOutOutsideGeofencePolicy: true,
+      minimumGpsAccuracyMeters: true,
+      requiresClockInSelfie: true,
+      requiresClockOutSelfie: true,
+      requiresPatrol: true,
+      requiresFinalShiftNote: true,
+      instructions: true,
+      status: true,
+    },
+  },
   breaks: {
     select: {
       id: true,
@@ -88,7 +145,116 @@ export class AttendanceService {
     private readonly auditService: AttendanceAuditService,
     private readonly accessService: AssignmentAccessService,
     private readonly idempotencyService: IdempotencyService,
+    private readonly localStorage: LocalStorageProvider,
+    @Inject(STORAGE_PROVIDER)
+    private readonly storage: StorageProvider,
   ) {}
+
+  /**
+   * Upload a clock-in/out selfie before attendance mutation.
+   * Returns an evidenceId that must be passed as ClockInDto.evidenceId / ClockOutDto.evidenceId.
+   */
+  async uploadSelfie(
+    user: RequestUser,
+    file: Express.Multer.File | undefined,
+    ctx: ServiceRequestContext,
+    purpose: 'clock-in' | 'clock-out' = 'clock-in',
+  ) {
+    if (!file?.buffer?.length) {
+      throw new AppException(
+        'Selfie file is required',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.VALIDATION_ERROR,
+        [{ field: 'file', message: 'Multipart file field is required' }],
+      );
+    }
+    const mimeType = file.mimetype || 'application/octet-stream';
+    if (!mimeType.startsWith('image/')) {
+      throw new AppException(
+        'Selfie must be an image',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.STORAGE_CONTENT_TYPE_INVALID,
+        [{ field: 'file', message: `Unexpected mimeType ${mimeType}` }],
+      );
+    }
+    const maxBytes =
+      this.configService.get<number>('storage.maxImageSizeBytes') ?? 10_485_760;
+    if (file.size > maxBytes) {
+      throw new AppException(
+        'Selfie exceeds maximum allowed size',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.STORAGE_FILE_TOO_LARGE,
+      );
+    }
+
+    const organisationId = requireOrganisationId(user);
+    const evidenceId = randomUUID();
+    const ext = mimeType.includes('png')
+      ? '.png'
+      : mimeType.includes('webp')
+        ? '.webp'
+        : '.jpg';
+    const storageKey = `${organisationId}/attendance/selfies/${user.id}/${evidenceId}${ext}`;
+    this.localStorage.putObject(storageKey, file.buffer);
+    const bucket = this.configService.get<string>('storage.bucket') || 'local';
+
+    const evidence = await this.prisma.evidence.create({
+      data: {
+        id: evidenceId,
+        organisationId,
+        uploadedByUserId: user.id,
+        type: EvidenceType.IMAGE,
+        status: EvidenceStatus.AVAILABLE,
+        originalFileName: file.originalname || `selfie-${purpose}${ext}`,
+        storageProvider: 'local',
+        storageBucket: bucket,
+        storageKey,
+        mimeType,
+        sizeBytes: file.size,
+        uploadedAt: new Date(),
+        metadata: { purpose: `attendance-${purpose}` },
+      },
+    });
+
+    await this.auditService.record(
+      {
+        organisationId,
+        actorUserId: user.id,
+        action: AuditAction.UPLOAD,
+        entityId: evidence.id,
+        metadata: { action: 'attendance-selfie', purpose },
+      },
+      ctx,
+    );
+
+    return { evidenceId: evidence.id };
+  }
+
+  private async assertSelfieEvidenceOwned(
+    organisationId: string,
+    userId: string,
+    evidenceId: string,
+  ): Promise<void> {
+    const evidence = await this.prisma.evidence.findFirst({
+      where: {
+        id: evidenceId,
+        organisationId,
+        uploadedByUserId: userId,
+        deletedAt: null,
+        status: {
+          in: [EvidenceStatus.AVAILABLE, EvidenceStatus.UPLOADED],
+        },
+      },
+      select: { id: true },
+    });
+    if (!evidence) {
+      throw new AppException(
+        'Selfie evidence was not found or is not ready',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.ATTENDANCE_EVIDENCE_REQUIRED,
+      );
+    }
+  }
 
   async clockIn(
     user: RequestUser,
@@ -314,10 +480,44 @@ export class AttendanceService {
     );
     const sortOrder = query.sortOrder ?? 'desc';
 
+    let supervisorOfficerScope: Prisma.AttendanceWhereInput | undefined;
+    if (user.role === AppUserRole.SUPERVISOR) {
+      const supervisorProfileId =
+        await this.accessService.resolveSupervisorProfileId(
+          user,
+          organisationId,
+        );
+      if (!supervisorProfileId) {
+        supervisorOfficerScope = { officerId: { in: [] } };
+      } else {
+        const officerIds = await this.accessService.listAssignedOfficerIds(
+          organisationId,
+          supervisorProfileId,
+        );
+        if (query.officerId && !officerIds.includes(query.officerId)) {
+          supervisorOfficerScope = { officerId: { in: [] } };
+        } else {
+          supervisorOfficerScope = {
+            OR: [
+              {
+                officerId: query.officerId
+                  ? query.officerId
+                  : { in: officerIds },
+              },
+              { assignment: { supervisorId: supervisorProfileId } },
+            ],
+          };
+        }
+      }
+    }
+
     const where: Prisma.AttendanceWhereInput = {
       organisationId,
       deletedAt: null,
-      ...(query.officerId ? { officerId: query.officerId } : {}),
+      ...supervisorOfficerScope,
+      ...(query.officerId && user.role !== AppUserRole.SUPERVISOR
+        ? { officerId: query.officerId }
+        : {}),
       ...(query.shiftId ? { shiftId: query.shiftId } : {}),
       ...(query.siteId ? { siteId: query.siteId } : {}),
       ...(query.status ? { status: query.status } : {}),
@@ -368,7 +568,43 @@ export class AttendanceService {
       where: { id, organisationId, deletedAt: null },
       include: {
         ...ATTENDANCE_INCLUDE,
-        events: { orderBy: { createdAt: 'asc' } },
+        events: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            device: {
+              select: {
+                id: true,
+                platform: true,
+                deviceName: true,
+                manufacturer: true,
+                model: true,
+                appVersion: true,
+                status: true,
+                installationId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!attendance) {
+      tenantNotFound(ErrorCode.ATTENDANCE_NOT_FOUND);
+    }
+
+    await this.assertCanReadAttendance(user, organisationId, attendance);
+
+    return toAttendanceResponse(attendance, { includeEvents: true });
+  }
+
+  /**
+   * Clock-in / clock-out selfie evidence for supervisors and admins
+   * (also visible to the officer who owns the attendance).
+   */
+  async listEvidence(user: RequestUser, attendanceId: string) {
+    const organisationId = requireOrganisationId(user);
+    const attendance = await this.prisma.attendance.findFirst({
+      where: { id: attendanceId, organisationId, deletedAt: null },
+      include: {
         assignment: {
           select: {
             id: true,
@@ -382,10 +618,84 @@ export class AttendanceService {
     if (!attendance) {
       tenantNotFound(ErrorCode.ATTENDANCE_NOT_FOUND);
     }
-
     await this.assertCanReadAttendance(user, organisationId, attendance);
 
-    return toAttendanceResponse(attendance, { includeEvents: true });
+    const evidenceIds = [
+      attendance.clockInEvidenceId,
+      attendance.clockOutEvidenceId,
+    ].filter((id): id is string => Boolean(id));
+
+    const userSelect = {
+      id: true,
+      employeeId: true,
+      firstName: true,
+      lastName: true,
+      displayName: true,
+      avatarUrl: true,
+    } as const;
+
+    const rows = await this.prisma.evidence.findMany({
+      where: {
+        organisationId,
+        deletedAt: null,
+        OR: [
+          { attendanceId: attendance.id },
+          ...(evidenceIds.length ? [{ id: { in: evidenceIds } }] : []),
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        uploadedByUser: { select: userSelect },
+        verifiedByUser: { select: userSelect },
+      },
+    });
+
+    // Backfill attendanceId for selfies uploaded before linking existed.
+    const unlinked = rows.filter(
+      (row) => row.attendanceId !== attendance.id && evidenceIds.includes(row.id),
+    );
+    if (unlinked.length) {
+      await this.prisma.evidence.updateMany({
+        where: { id: { in: unlinked.map((r) => r.id) } },
+        data: { attendanceId: attendance.id },
+      });
+    }
+
+    const ttl =
+      this.configService.get<number>('storage.signedUrlTtlSeconds') ?? 900;
+
+    return Promise.all(
+      rows.map(async (row) => {
+        const purpose =
+          row.id === attendance.clockInEvidenceId
+            ? 'clock-in'
+            : row.id === attendance.clockOutEvidenceId
+              ? 'clock-out'
+              : ((row.metadata as { purpose?: string } | null)?.purpose ??
+                null);
+        if (
+          row.status === EvidenceStatus.AVAILABLE ||
+          row.status === EvidenceStatus.UPLOADED
+        ) {
+          try {
+            const signed = await this.storage.getSignedDownloadUrl(
+              row.storageKey,
+              ttl,
+            );
+            return {
+              ...toEvidenceResponse(row, {
+                downloadUrl: signed.downloadUrl,
+                downloadExpiresAt: signed.expiresAt.toISOString(),
+              }),
+              purpose,
+            };
+          } catch {
+            return { ...toEvidenceResponse(row), purpose };
+          }
+        }
+        return { ...toEvidenceResponse(row), purpose };
+      }),
+    );
   }
 
   async requestReview(
@@ -714,6 +1024,9 @@ export class AttendanceService {
         ErrorCode.ATTENDANCE_EVIDENCE_REQUIRED,
       );
     }
+    if (site.requiresClockInSelfie && dto.evidenceId) {
+      await this.assertSelfieEvidenceOwned(organisationId, user.id, dto.evidenceId);
+    }
 
     const distanceMeters = this.geofenceService.distanceMeters(
       site.latitude,
@@ -799,6 +1112,18 @@ export class AttendanceService {
           reason: trimOrUndefined(dto.reason) ?? null,
         },
       });
+
+      if (dto.evidenceId) {
+        await tx.evidence.updateMany({
+          where: {
+            id: dto.evidenceId,
+            organisationId,
+            uploadedByUserId: user.id,
+            deletedAt: null,
+          },
+          data: { attendanceId: attendance.id },
+        });
+      }
 
       if (
         assignment.status === AssignmentStatus.ASSIGNED ||
@@ -916,6 +1241,9 @@ export class AttendanceService {
         ErrorCode.ATTENDANCE_EVIDENCE_REQUIRED,
       );
     }
+    if (site.requiresClockOutSelfie && dto.evidenceId) {
+      await this.assertSelfieEvidenceOwned(organisationId, user.id, dto.evidenceId);
+    }
 
     if (site.requiresFinalShiftNote && !trimOrUndefined(dto.finalShiftNote)) {
       throw new AppException(
@@ -1014,6 +1342,18 @@ export class AttendanceService {
           reason: trimOrUndefined(dto.reason) ?? null,
         },
       });
+
+      if (dto.evidenceId) {
+        await tx.evidence.updateMany({
+          where: {
+            id: dto.evidenceId,
+            organisationId,
+            uploadedByUserId: user.id,
+            deletedAt: null,
+          },
+          data: { attendanceId: row.id },
+        });
+      }
 
       if (attendance.assignment.status === AssignmentStatus.IN_PROGRESS) {
         await tx.assignment.update({

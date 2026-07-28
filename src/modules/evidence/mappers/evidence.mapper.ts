@@ -1,6 +1,29 @@
-import type { Evidence } from '../../../../generated/prisma/client';
+import type { Evidence, User } from '../../../../generated/prisma/client';
 
-export function toEvidenceResponse(row: Evidence) {
+type UserSummary = Pick<
+  User,
+  'id' | 'employeeId' | 'firstName' | 'lastName' | 'displayName' | 'avatarUrl'
+>;
+
+function mapUser(user: UserSummary | null | undefined) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    employeeId: user.employeeId,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+  };
+}
+
+export function toEvidenceResponse(
+  row: Evidence & {
+    uploadedByUser?: UserSummary | null;
+    verifiedByUser?: UserSummary | null;
+  },
+  extras?: { downloadUrl?: string | null; downloadExpiresAt?: string | null },
+) {
   return {
     id: row.id,
     organisationId: row.organisationId,
@@ -32,5 +55,9 @@ export function toEvidenceResponse(row: Evidence) {
     thumbnailKey: row.thumbnailKey,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    uploadedByUser: mapUser(row.uploadedByUser),
+    verifiedByUser: mapUser(row.verifiedByUser),
+    downloadUrl: extras?.downloadUrl ?? null,
+    downloadExpiresAt: extras?.downloadExpiresAt ?? null,
   };
 }

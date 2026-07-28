@@ -436,9 +436,13 @@ export class PatrolVisitsService {
       method === CheckpointVerificationMethod.QR_CODE ||
       method === CheckpointVerificationMethod.GPS_AND_QR;
 
-    if (needsGps && distanceMeters > snapshot.allowedRadiusMeters) {
+    // Allow a small GPS accuracy buffer so noisy phone GPS near the pin still passes.
+    const accuracyBuffer = Math.min(Math.max(dto.accuracyMeters ?? 0, 0), 25);
+    const effectiveRadius = snapshot.allowedRadiusMeters + accuracyBuffer;
+
+    if (needsGps && distanceMeters > effectiveRadius) {
       throw new AppException(
-        'Visit is outside the checkpoint geofence',
+        `Visit is outside the checkpoint geofence (${Math.round(distanceMeters)} m away, allowed ${snapshot.allowedRadiusMeters} m)`,
         HttpStatus.CONFLICT,
         ErrorCode.PATROL_VISIT_OUTSIDE_GEOFENCE,
       );

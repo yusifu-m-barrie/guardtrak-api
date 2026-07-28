@@ -43,6 +43,9 @@ export class UpdateOrganisationDto {
   @IsOptional()
   @IsEmail()
   @MaxLength(191)
+  @Transform(({ value }: { value: unknown }) =>
+    transformIfString(value, trimOrUndefined),
+  )
   email?: string;
 
   @ApiPropertyOptional({ example: '+23276000000' })
@@ -77,7 +80,10 @@ export class UpdateOrganisationDto {
 
   @ApiPropertyOptional({ example: 'https://cdn.example/logo.png' })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   @MaxLength(500)
-  logoUrl?: string;
+  @Transform(({ value }: { value: unknown }) =>
+    transformIfString(value, trimOrUndefined),
+  )
+  logoUrl?: string | null;
 }

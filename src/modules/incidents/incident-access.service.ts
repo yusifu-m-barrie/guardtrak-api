@@ -172,10 +172,14 @@ export class IncidentAccessService {
         ],
       };
     }
+    const officerId = await this.resolveOfficerProfileId(user, organisationId);
     return {
       organisationId,
       deletedAt: null,
-      reportedByUserId: user.id,
+      OR: [
+        { reportedByUserId: user.id },
+        ...(officerId ? [{ reportedByOfficerId: officerId }] : []),
+      ],
     };
   }
 }

@@ -690,19 +690,32 @@ export class SupervisorsService {
     const existing = await tx.supervisorOfficer.findFirst({
       where: {
         organisationId,
-        supervisorId,
         officerId,
         OR: [{ activeUntil: null }, { activeUntil: { gt: new Date() } }],
       },
+      select: {
+        id: true,
+        supervisorId: true,
+      },
     });
 
-    if (existing) {
+    if (!existing) {
+      return;
+    }
+
+    if (existing.supervisorId === supervisorId) {
       throw new AppException(
-        'Active supervisor-officer relation already exists',
+        'This officer is already assigned to this supervisor',
         HttpStatus.CONFLICT,
         ErrorCode.SUPERVISOR_OFFICER_RELATION_EXISTS,
       );
     }
+
+    throw new AppException(
+      'This officer already has an active supervisor. Unassign them first before assigning a different supervisor.',
+      HttpStatus.CONFLICT,
+      ErrorCode.SUPERVISOR_OFFICER_RELATION_EXISTS,
+    );
   }
 
   private handleCreateError(error: unknown): never {

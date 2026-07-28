@@ -47,10 +47,13 @@ export class DeviceAuthService {
         );
       }
 
-      if (
+      const ownershipMismatch =
         existing.userId !== input.userId ||
-        existing.organisationId !== input.organisationId
-      ) {
+        existing.organisationId !== input.organisationId;
+
+      // Live/production: one installationId stays bound to one account.
+      // Local/testing: allow the same browser/device to switch accounts freely.
+      if (ownershipMismatch && this.enforceDeviceOwnership()) {
         throw new AppException(
           'This device is already registered to another account',
           HttpStatus.FORBIDDEN,
@@ -63,12 +66,23 @@ export class DeviceAuthService {
           ? this.autoApprove()
             ? DeviceStatus.ACTIVE
             : DeviceStatus.PENDING
-          : existing.status;
+          : existing.status === DeviceStatus.ACTIVE
+            ? DeviceStatus.ACTIVE
+            : this.autoApprove()
+              ? DeviceStatus.ACTIVE
+              : existing.status;
       const activeLogin = nextStatus === DeviceStatus.ACTIVE;
 
       return this.prisma.device.update({
         where: { id: existing.id },
         data: {
+          // Testing: re-bind installation to the account currently signing in.
+          ...(ownershipMismatch
+            ? {
+                userId: input.userId,
+                organisationId: input.organisationId,
+              }
+            : {}),
           platform: input.platform,
           deviceName: input.deviceName ?? existing.deviceName,
           manufacturer: input.manufacturer ?? existing.manufacturer,
@@ -123,5 +137,20 @@ export class DeviceAuthService {
     }
     const nodeEnv = this.configService.get<string>('app.nodeEnv');
     return nodeEnv === 'development' || nodeEnv === 'test';
+  }
+
+  /**
+   * Production/staging keep strict 1-device → 1-account binding.
+   * Development/test skip it so QA can log in as many users from one browser/phone.
+   */
+  private enforceDeviceOwnership(): boolean {
+    const configured = this.configService.get<boolean>(
+      'auth.enforceDeviceOwnership',
+    );
+    if (configured !== undefined) {
+      return configured;
+    }
+    const nodeEnv = this.configService.get<string>('app.nodeEnv');
+    return nodeEnv === 'production' || nodeEnv === 'staging';
   }
 }

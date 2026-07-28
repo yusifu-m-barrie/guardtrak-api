@@ -1,9 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/request-user.type';
 import { ReportsService } from './reports.service';
+import { AttendanceHoursQueryDto } from './dto/attendance-hours-query.dto';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -23,6 +24,19 @@ export class ReportsController {
   @ApiOperation({ summary: 'Attendance report aggregates' })
   attendance(@CurrentUser() user: RequestUser) {
     return this.reportsService.attendance(user);
+  }
+
+  @Get('attendance-hours')
+  @Permissions('report:read')
+  @ApiOperation({
+    summary:
+      'Attendance work-hours reports (clock-out − clock-in − breaks) with filters, pagination, and report views',
+  })
+  attendanceHours(
+    @CurrentUser() user: RequestUser,
+    @Query() query: AttendanceHoursQueryDto,
+  ) {
+    return this.reportsService.attendanceHours(user, query);
   }
 
   @Get('incidents')

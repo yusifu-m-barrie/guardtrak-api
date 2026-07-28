@@ -388,6 +388,8 @@ model Organisation {
   timezone           String             @default("Africa/Freetown")
   logoUrl            String?
   status             OrganisationStatus @default(ACTIVE)
+  /// Organisation-scoped operational settings (security, attendance, patrol, etc.)
+  settings           Json               @default("{}")
   /// Null = unlimited; Phase 9 storage quota enforcement
   storageQuotaBytes  BigInt?
   storageUsedBytes   BigInt             @default(0)

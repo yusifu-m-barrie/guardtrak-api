@@ -30,6 +30,7 @@ import { SupervisorsModule } from './modules/supervisors/supervisors.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { SitesModule } from './modules/sites/sites.module';
 import { DevicesModule } from './modules/devices/devices.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { ShiftsModule } from './modules/shifts/shifts.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
@@ -226,6 +227,7 @@ import { SuspiciousRequestMiddleware } from './common/middleware/suspicious-requ
     ClientsModule,
     SitesModule,
     DevicesModule,
+    AuditLogsModule,
     ShiftsModule,
     AssignmentsModule,
     AttendanceModule,

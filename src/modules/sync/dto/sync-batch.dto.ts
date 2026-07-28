@@ -29,7 +29,7 @@ export class SyncOperationDto {
   @ApiProperty({
     example: 'incident.create',
     description:
-      'Supported: attendance.clock_in, attendance.clock_out, incident.create, patrol.visit, emergency.sos, support.request',
+      'Supported: attendance.clock_in, attendance.clock_out, incident.create, incident.update, patrol.visit, emergency.sos, support.request',
   })
   @IsString()
   @IsNotEmpty()

@@ -359,19 +359,53 @@ export class EvidenceService {
       organisationId,
       incident,
     );
+    const userSelect = {
+      id: true,
+      employeeId: true,
+      firstName: true,
+      lastName: true,
+      displayName: true,
+      avatarUrl: true,
+    } as const;
     const rows = await this.prisma.evidence.findMany({
       where: { incidentId, organisationId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
+      include: {
+        uploadedByUser: { select: userSelect },
+        verifiedByUser: { select: userSelect },
+      },
     });
-    if (
+    const visible =
       userHasPermission(user, 'evidence:read') ||
       userHasPermission(user, 'evidence:manage')
-    ) {
-      return rows.map(toEvidenceResponse);
-    }
-    return rows
-      .filter((r) => r.uploadedByUserId === user.id)
-      .map(toEvidenceResponse);
+        ? rows
+        : rows.filter((r) => r.uploadedByUserId === user.id);
+
+    const ttl =
+      this.configService.get<number>('storage.signedUrlTtlSeconds') ?? 900;
+
+    return Promise.all(
+      visible.map(async (row) => {
+        if (
+          row.status === EvidenceStatus.AVAILABLE ||
+          row.status === EvidenceStatus.UPLOADED
+        ) {
+          try {
+            const signed = await this.storage.getSignedDownloadUrl(
+              row.storageKey,
+              ttl,
+            );
+            return toEvidenceResponse(row, {
+              downloadUrl: signed.downloadUrl,
+              downloadExpiresAt: signed.expiresAt.toISOString(),
+            });
+          } catch {
+            return toEvidenceResponse(row);
+          }
+        }
+        return toEvidenceResponse(row);
+      }),
+    );
   }
 
   async softDelete(

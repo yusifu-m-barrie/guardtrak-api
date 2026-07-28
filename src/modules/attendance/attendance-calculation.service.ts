@@ -20,6 +20,14 @@ export interface AttendanceTotalsResult {
   earlyDepartureMinutes: number;
 }
 
+export interface WorkedTimeInput {
+  clockInServerAt: Date | null | undefined;
+  clockOutServerAt: Date | null | undefined;
+  breakSeconds?: number | null;
+  breakMinutes?: number | null;
+  breakHours?: number | null;
+}
+
 @Injectable()
 export class AttendanceCalculationService {
   calculateTotals(input: AttendanceTotalsInput): AttendanceTotalsResult {
@@ -79,5 +87,82 @@ export class AttendanceCalculationService {
       return 0;
     }
     return Math.max(0, Math.floor(value));
+  }
+
+  calculateWorkedSeconds(input: WorkedTimeInput): number {
+    const clockInMs = input.clockInServerAt?.getTime();
+    const clockOutMs = input.clockOutServerAt?.getTime();
+    if (!Number.isFinite(clockInMs) || !Number.isFinite(clockOutMs)) {
+      return 0;
+    }
+    const attendanceSeconds = Math.max(0, (clockOutMs! - clockInMs!) / 1000);
+    const breakSeconds = this.normaliseBreakSeconds(input);
+    return Math.max(0, attendanceSeconds - breakSeconds);
+  }
+
+  calculateWorkedMinutes(input: WorkedTimeInput): number {
+    return this.calculateWorkedSeconds(input) / 60;
+  }
+
+  calculateWorkedHours(input: WorkedTimeInput, precision = 2): number {
+    return this.roundHoursFromSeconds(
+      this.calculateWorkedSeconds(input),
+      precision,
+    );
+  }
+
+  calculateDailyTotal(workedSecondsValues: number[]): number {
+    return this.sumSeconds(workedSecondsValues);
+  }
+
+  calculateOfficerTotal(workedSecondsValues: number[]): number {
+    return this.sumSeconds(workedSecondsValues);
+  }
+
+  calculateSiteTotal(workedSecondsValues: number[]): number {
+    return this.sumSeconds(workedSecondsValues);
+  }
+
+  calculateOrganizationTotal(workedSecondsValues: number[]): number {
+    return this.sumSeconds(workedSecondsValues);
+  }
+
+  calculateAverageHours(
+    totalWorkedSeconds: number,
+    divisor: number,
+    precision = 2,
+  ): number {
+    if (!Number.isFinite(divisor) || divisor <= 0) {
+      return 0;
+    }
+    const averageSeconds = this.sumSeconds([totalWorkedSeconds]) / divisor;
+    return this.roundHoursFromSeconds(averageSeconds, precision);
+  }
+
+  roundHoursFromSeconds(seconds: number, precision = 2): number {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return 0;
+    }
+    return Number((seconds / 3600).toFixed(precision));
+  }
+
+  private sumSeconds(values: number[]): number {
+    return values.reduce((sum, value) => {
+      if (!Number.isFinite(value)) return sum;
+      return sum + Math.max(0, value);
+    }, 0);
+  }
+
+  private normaliseBreakSeconds(input: WorkedTimeInput): number {
+    if (input.breakSeconds != null && Number.isFinite(input.breakSeconds)) {
+      return Math.max(0, input.breakSeconds);
+    }
+    if (input.breakMinutes != null && Number.isFinite(input.breakMinutes)) {
+      return Math.max(0, input.breakMinutes * 60);
+    }
+    if (input.breakHours != null && Number.isFinite(input.breakHours)) {
+      return Math.max(0, input.breakHours * 3600);
+    }
+    return 0;
   }
 }

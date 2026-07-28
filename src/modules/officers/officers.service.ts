@@ -1,4 +1,5 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import {
   AuditAction,
   OfficerEmploymentStatus,
@@ -32,6 +33,11 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
 import { PasswordService } from '../auth/services/password.service';
 import { SessionService } from '../auth/services/session.service';
+import { LocalStorageProvider } from '../storage/local-storage.provider';
+import {
+  STORAGE_PROVIDER,
+  type StorageProvider,
+} from '../storage/storage.types';
 import type { CreateOfficerDto } from './dto/create-officer.dto';
 import type { ListOfficersQueryDto } from './dto/list-officers-query.dto';
 import type { UpdateOfficerDto } from './dto/update-officer.dto';
@@ -72,6 +78,9 @@ const OFFICER_ME_INCLUDE = (now = new Date()) =>
                 firstName: true,
                 lastName: true,
                 displayName: true,
+                phone: true,
+                email: true,
+                avatarUrl: true,
               },
             },
           },
@@ -93,6 +102,9 @@ export class OfficersService {
     private readonly passwordService: PasswordService,
     private readonly sessionService: SessionService,
     private readonly authAuditService: AuthAuditService,
+    @Inject(STORAGE_PROVIDER)
+    private readonly storage: StorageProvider,
+    private readonly localStorage: LocalStorageProvider,
   ) {}
 
   async create(actor: RequestUser, dto: CreateOfficerDto, audit: AuditContext) {
@@ -326,6 +338,106 @@ export class OfficersService {
     } catch (error) {
       this.handleUpdateError(error);
     }
+  }
+
+  async uploadAvatar(
+    actor: RequestUser,
+    file: Express.Multer.File | undefined,
+    audit: AuditContext,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new AppException(
+        'Avatar file is required',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.VALIDATION_ERROR,
+        [{ field: 'file', message: 'Multipart file field is required' }],
+      );
+    }
+    const mimeType = file.mimetype || 'application/octet-stream';
+    if (!mimeType.startsWith('image/')) {
+      throw new AppException(
+        'Avatar must be an image',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.STORAGE_CONTENT_TYPE_INVALID,
+        [{ field: 'file', message: `Unexpected mimeType ${mimeType}` }],
+      );
+    }
+    const maxBytes = 5_242_880;
+    if (file.size > maxBytes) {
+      throw new AppException(
+        'Avatar exceeds maximum allowed size',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.STORAGE_FILE_TOO_LARGE,
+      );
+    }
+
+    const organisationId = requireOrganisationId(actor);
+    const existing = await this.prisma.officerProfile.findFirst({
+      where: {
+        organisationId,
+        userId: actor.id,
+        deletedAt: null,
+      },
+      select: { id: true, userId: true },
+    });
+    if (!existing) {
+      tenantNotFound(ErrorCode.OFFICER_NOT_FOUND);
+    }
+
+    const ext =
+      mimeType === 'image/png'
+        ? '.png'
+        : mimeType === 'image/webp'
+          ? '.webp'
+          : '.jpg';
+    const storageKey = `${organisationId}/avatars/${actor.id}/${randomUUID()}${ext}`;
+    const upload = await this.storage.createUploadUrl({
+      organisationId,
+      storageKey,
+      mimeType,
+      sizeBytes: file.size,
+      ttlSeconds: 900,
+    });
+
+    if (upload.uploadUrl.startsWith('local-upload://')) {
+      const ticketId = upload.uploadUrl.replace('local-upload://', '');
+      this.localStorage.writeObjectFromTicket(ticketId, file.buffer);
+    } else {
+      const putRes = await fetch(upload.uploadUrl, {
+        method: upload.method || 'PUT',
+        headers: { 'Content-Type': mimeType },
+        body: new Uint8Array(file.buffer),
+      });
+      if (!putRes.ok) {
+        throw new AppException(
+          'Avatar storage upload failed',
+          HttpStatus.BAD_GATEWAY,
+          ErrorCode.STORAGE_UPLOAD_FAILED,
+        );
+      }
+    }
+
+    await this.storage.completeUpload({ storageKey });
+    const avatarUrl = this.storage.getPublicUrl(storageKey);
+
+    await this.prisma.user.update({
+      where: { id: existing.userId },
+      data: { avatarUrl },
+    });
+
+    await this.authAuditService.record({
+      organisationId,
+      actorUserId: actor.id,
+      action: AuditAction.UPDATE,
+      entityType: 'OfficerProfile',
+      entityId: existing.id,
+      requestId: audit.requestId,
+      ipAddress: audit.ipAddress,
+      userAgent: audit.userAgent,
+      metadata: { selfUpdate: true, avatarUploaded: true, storageKey },
+    });
+
+    return this.getMe(actor);
   }
 
   async getById(actor: RequestUser, officerId: string) {
@@ -594,6 +706,12 @@ export class OfficersService {
           OR: [{ activeUntil: null }, { activeUntil: { gt: new Date() } }],
         },
       };
+    } else if (query.unassignedOnly) {
+      where.supervisorLinks = {
+        none: {
+          OR: [{ activeUntil: null }, { activeUntil: { gt: new Date() } }],
+        },
+      };
     }
 
     if (actor.role === AppUserRole.SUPERVISOR) {
@@ -634,7 +752,7 @@ export class OfficersService {
   ) {
     const profile = await this.prisma.officerProfile.findFirst({
       where: { id: officerId, organisationId },
-      include: OFFICER_INCLUDE,
+      include: OFFICER_ME_INCLUDE(),
     });
 
     if (!profile || profile.deletedAt) {
@@ -651,7 +769,7 @@ export class OfficersService {
   ) {
     const profile = await this.prisma.officerProfile.findFirst({
       where: { id: officerId, organisationId },
-      include: OFFICER_INCLUDE,
+      include: OFFICER_ME_INCLUDE(),
     });
 
     if (!profile || profile.deletedAt) {

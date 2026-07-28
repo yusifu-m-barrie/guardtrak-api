@@ -198,7 +198,8 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
-  CORS_ORIGINS = 'http://localhost:3000';
+  CORS_ORIGINS =
+    'http://localhost:3000,http://localhost:3001,http://localhost:5173';
 
   @IsString()
   @IsNotEmpty()
@@ -453,7 +454,8 @@ export class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
-  WS_CORS_ORIGINS = 'http://localhost:3000,http://localhost:5173';
+  WS_CORS_ORIGINS =
+    'http://localhost:3000,http://localhost:3001,http://localhost:5173';
 
   @Transform(booleanWithDefault(true))
   METRICS_ENABLED = true;
@@ -597,7 +599,9 @@ export function applyDevelopmentDefaults(
     AUTH_PASSWORD_HISTORY_COUNT: config.AUTH_PASSWORD_HISTORY_COUNT ?? '5',
     AUTH_PASSWORD_MAX_AGE_DAYS: config.AUTH_PASSWORD_MAX_AGE_DAYS ?? '0',
     AUTH_STRICT_FINGERPRINT: config.AUTH_STRICT_FINGERPRINT ?? 'false',
-    CORS_ORIGINS: config.CORS_ORIGINS ?? 'http://localhost:3000',
+    CORS_ORIGINS:
+      config.CORS_ORIGINS ??
+      'http://localhost:3000,http://localhost:3001,http://localhost:5173',
     LOG_LEVEL: config.LOG_LEVEL ?? 'log',
     RATE_LIMIT_TTL: config.RATE_LIMIT_TTL ?? '60000',
     RATE_LIMIT_LIMIT: config.RATE_LIMIT_LIMIT ?? '100',
@@ -618,7 +622,8 @@ export function applyDevelopmentDefaults(
     SMTP_FROM: config.SMTP_FROM ?? 'noreply@guardtrak.local',
     WS_ENABLED: config.WS_ENABLED ?? 'true',
     WS_CORS_ORIGINS:
-      config.WS_CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:5173',
+      config.WS_CORS_ORIGINS ??
+      'http://localhost:3000,http://localhost:3001,http://localhost:5173',
     METRICS_ENABLED: config.METRICS_ENABLED ?? 'true',
     TRUST_PROXY: config.TRUST_PROXY ?? 'false',
     COMPRESSION_ENABLED: config.COMPRESSION_ENABLED ?? 'true',

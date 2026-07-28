@@ -32,7 +32,14 @@ export type SafeUserPayload = Pick<
 
 export type SupervisorSummaryUser = Pick<
   User,
-  'id' | 'employeeId' | 'firstName' | 'lastName' | 'displayName'
+  | 'id'
+  | 'employeeId'
+  | 'firstName'
+  | 'lastName'
+  | 'displayName'
+  | 'phone'
+  | 'email'
+  | 'avatarUrl'
 >;
 
 const OFFICER_USER_FIELDS = [
@@ -141,6 +148,9 @@ export function mapSupervisorLink(
                 firstName: link.supervisor.user.firstName,
                 lastName: link.supervisor.user.lastName,
                 displayName: link.supervisor.user.displayName,
+                phone: link.supervisor.user.phone ?? null,
+                email: link.supervisor.user.email ?? null,
+                avatarUrl: link.supervisor.user.avatarUrl ?? null,
               }
             : null,
         }
@@ -149,12 +159,24 @@ export function mapSupervisorLink(
 }
 
 export function mapOfficerDetail(
-  profile: OfficerProfile & { user: SafeUserPayload },
+  profile: OfficerProfile & {
+    user: SafeUserPayload;
+    supervisorLinks?: (SupervisorOfficer & {
+      supervisor?: SupervisorProfile & {
+        user?: SupervisorSummaryUser | null;
+      };
+    })[];
+  },
   options: OfficerMapperOptions = {},
 ) {
+  const activeSupervisors = (profile.supervisorLinks ?? []).filter(
+    (link) => !link.activeUntil || link.activeUntil > new Date(),
+  );
+
   return {
     profile: mapOfficerProfile(profile, options),
     user: mapOfficerUser(profile.user),
+    supervisors: activeSupervisors.map(mapSupervisorLink),
   };
 }
 

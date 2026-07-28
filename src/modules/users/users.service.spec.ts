@@ -55,6 +55,16 @@ describe('UsersService', () => {
       update: jest.fn(),
       count: jest.fn(),
     },
+    officerProfile: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    supervisorProfile: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
     refreshSession: {
       updateMany: jest.fn(),
     },
@@ -71,6 +81,22 @@ describe('UsersService', () => {
 
   const authAuditService = {
     record: jest.fn(),
+  };
+
+  const storage = {
+    name: 'local',
+    createUploadUrl: jest.fn(),
+    completeUpload: jest.fn(),
+    getPublicUrl: jest.fn((key: string) => `http://127.0.0.1:3000/${key}`),
+    getSignedDownloadUrl: jest.fn(),
+    deleteObject: jest.fn(),
+  };
+
+  const localStorage = {
+    putObject: jest.fn(() => 'checksum'),
+    writeObjectFromTicket: jest.fn(),
+    getRoot: jest.fn(),
+    resolveObjectPath: jest.fn(),
   };
 
   let service: UsersService;
@@ -90,6 +116,8 @@ describe('UsersService', () => {
       passwordService as never,
       sessionService as never,
       authAuditService as never,
+      storage as never,
+      localStorage as never,
     );
   });
 
@@ -111,11 +139,14 @@ describe('UsersService', () => {
       email: 'officer2@example.com',
       employeeId: 'OFF-002',
     });
+    prisma.officerProfile.findFirst.mockResolvedValue(null);
+    prisma.officerProfile.create.mockResolvedValue({ id: 'profile-1' });
 
     const result = await service.create(actor, createDto, {});
 
     expect(assertPolicy).toHaveBeenCalledWith(createDto.temporaryPassword);
     expect(hash).toHaveBeenCalledWith(createDto.temporaryPassword);
+    expect(prisma.officerProfile.create).toHaveBeenCalled();
 
     const createCalls = prisma.user.create.mock.calls as unknown as Array<
       [

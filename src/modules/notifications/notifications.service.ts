@@ -148,9 +148,11 @@ export class NotificationsService {
   async listMine(user: RequestUser, query: ListNotificationsQueryDto) {
     const organisationId = requireOrganisationId(user);
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
+    const now = new Date();
     const where: Prisma.NotificationWhereInput = {
       organisationId,
       recipientUserId: user.id,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       ...(query.unreadOnly ? { readAt: null } : {}),
     };
     const [total, rows] = await this.prisma.$transaction([
@@ -170,11 +172,13 @@ export class NotificationsService {
 
   async unreadCount(user: RequestUser) {
     const organisationId = requireOrganisationId(user);
+    const now = new Date();
     const count = await this.prisma.notification.count({
       where: {
         organisationId,
         recipientUserId: user.id,
         readAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
     });
     return { unreadCount: count };
@@ -182,8 +186,14 @@ export class NotificationsService {
 
   async getById(user: RequestUser, id: string) {
     const organisationId = requireOrganisationId(user);
+    const now = new Date();
     const row = await this.prisma.notification.findFirst({
-      where: { id, organisationId, recipientUserId: user.id },
+      where: {
+        id,
+        organisationId,
+        recipientUserId: user.id,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
     });
     if (!row) {
       tenantNotFound(ErrorCode.NOTIFICATION_NOT_FOUND);
@@ -193,8 +203,14 @@ export class NotificationsService {
 
   async markRead(user: RequestUser, id: string) {
     const organisationId = requireOrganisationId(user);
+    const now = new Date();
     const row = await this.prisma.notification.findFirst({
-      where: { id, organisationId, recipientUserId: user.id },
+      where: {
+        id,
+        organisationId,
+        recipientUserId: user.id,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
     });
     if (!row) {
       tenantNotFound(ErrorCode.NOTIFICATION_NOT_FOUND);
@@ -211,15 +227,78 @@ export class NotificationsService {
 
   async markAllRead(user: RequestUser) {
     const organisationId = requireOrganisationId(user);
+    const now = new Date();
     const result = await this.prisma.notification.updateMany({
       where: {
         organisationId,
         recipientUserId: user.id,
         readAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       data: { readAt: new Date() },
     });
     return { updatedCount: result.count };
+  }
+
+  async archiveOne(
+    user: RequestUser,
+    id: string,
+    ctx: ServiceRequestContext,
+  ): Promise<void> {
+    const organisationId = requireOrganisationId(user);
+    const now = new Date();
+    const row = await this.prisma.notification.findFirst({
+      where: {
+        id,
+        organisationId,
+        recipientUserId: user.id,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+    });
+    if (!row) {
+      tenantNotFound(ErrorCode.NOTIFICATION_NOT_FOUND);
+    }
+    await this.prisma.notification.update({
+      where: { id },
+      data: { expiresAt: now },
+    });
+    await this.auditService.record({
+      organisationId,
+      actorUserId: user.id,
+      action: AuditAction.DELETE,
+      entityType: 'Notification',
+      entityId: id,
+      requestId: ctx.requestId,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      metadata: { softArchive: true },
+    });
+  }
+
+  async clearRead(user: RequestUser, ctx: ServiceRequestContext) {
+    const organisationId = requireOrganisationId(user);
+    const now = new Date();
+    const result = await this.prisma.notification.updateMany({
+      where: {
+        organisationId,
+        recipientUserId: user.id,
+        readAt: { not: null },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      data: { expiresAt: now },
+    });
+    await this.auditService.record({
+      organisationId,
+      actorUserId: user.id,
+      action: AuditAction.DELETE,
+      entityType: 'Notification',
+      entityId: null,
+      requestId: ctx.requestId,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      metadata: { clearRead: true, count: result.count },
+    });
+    return { count: result.count };
   }
 
   async getPreferences(user: RequestUser) {

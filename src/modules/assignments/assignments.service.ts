@@ -9,6 +9,7 @@ import {
 } from '../../../generated/prisma/client';
 import { AppException } from '../../common/exceptions/app.exception';
 import { ErrorCode } from '../../common/constants/error-codes';
+import { UserRole as AppUserRole } from '../../common/enums/user-role.enum';
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
 import type { RequestUser } from '../../common/types/request-user.type';
 import {
@@ -46,6 +47,16 @@ const ASSIGNMENT_SORT_FIELDS = [
 ] as const;
 
 const ASSIGNMENT_INCLUDE = {
+  createdBy: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      displayName: true,
+      employeeId: true,
+      role: true,
+    },
+  },
   officer: {
     select: {
       id: true,
@@ -84,6 +95,29 @@ const ASSIGNMENT_INCLUDE = {
       gracePeriodMinutes: true,
       scheduledStartAt: true,
       scheduledEndAt: true,
+      site: {
+        select: {
+          id: true,
+          clientId: true,
+          name: true,
+          code: true,
+          address: true,
+          latitude: true,
+          longitude: true,
+          clockInRadiusMeters: true,
+          clockOutRadiusMeters: true,
+          checkpointDefaultRadiusMeters: true,
+          minimumGpsAccuracyMeters: true,
+          clockInOutsideGeofencePolicy: true,
+          clockOutOutsideGeofencePolicy: true,
+          requiresClockInSelfie: true,
+          requiresClockOutSelfie: true,
+          requiresPatrol: true,
+          requiresFinalShiftNote: true,
+          instructions: true,
+          status: true,
+        },
+      },
     },
   },
 } satisfies Prisma.AssignmentInclude;
@@ -103,6 +137,15 @@ export class AssignmentsService {
   ) {
     const organisationId = requireOrganisationId(user);
 
+    let supervisorId = dto.supervisorId ?? null;
+    if (user.role === AppUserRole.SUPERVISOR) {
+      supervisorId = await this.accessService.assertSupervisorMayManageOfficer(
+        user,
+        organisationId,
+        dto.officerId,
+      );
+    }
+
     const created = await this.prisma.$transaction(async (tx) => {
       const shift = await this.loadAssignableShift(
         tx,
@@ -110,11 +153,11 @@ export class AssignmentsService {
         dto.shiftId,
       );
       await this.assertOfficerAssignable(tx, organisationId, dto.officerId);
-      if (dto.supervisorId) {
+      if (supervisorId) {
         await this.assertSupervisorAssignable(
           tx,
           organisationId,
-          dto.supervisorId,
+          supervisorId,
         );
       }
 
@@ -137,7 +180,7 @@ export class AssignmentsService {
           organisationId,
           shiftId: dto.shiftId,
           officerId: dto.officerId,
-          supervisorId: dto.supervisorId ?? null,
+          supervisorId,
           status: AssignmentStatus.ASSIGNED,
           createdByUserId: user.id,
         },
@@ -169,6 +212,7 @@ export class AssignmentsService {
       metadata: {
         shiftId: created.shiftId,
         officerId: created.officerId,
+        supervisorId: created.supervisorId,
       },
     });
 
@@ -183,17 +227,28 @@ export class AssignmentsService {
     const organisationId = requireOrganisationId(user);
     const uniqueOfficerIds = [...new Set(dto.officerIds)];
 
+    let supervisorId = dto.supervisorId ?? null;
+    if (user.role === AppUserRole.SUPERVISOR) {
+      for (const officerId of uniqueOfficerIds) {
+        supervisorId = await this.accessService.assertSupervisorMayManageOfficer(
+          user,
+          organisationId,
+          officerId,
+        );
+      }
+    }
+
     const created = await this.prisma.$transaction(async (tx) => {
       const shift = await this.loadAssignableShift(
         tx,
         organisationId,
         dto.shiftId,
       );
-      if (dto.supervisorId) {
+      if (supervisorId) {
         await this.assertSupervisorAssignable(
           tx,
           organisationId,
-          dto.supervisorId,
+          supervisorId,
         );
       }
 
@@ -221,7 +276,7 @@ export class AssignmentsService {
             organisationId,
             shiftId: dto.shiftId,
             officerId,
-            supervisorId: dto.supervisorId ?? null,
+            supervisorId,
             status: AssignmentStatus.ASSIGNED,
             createdByUserId: user.id,
           },
@@ -254,6 +309,7 @@ export class AssignmentsService {
         batch: true,
         count: created.length,
         shiftId: dto.shiftId,
+        supervisorId,
       },
     });
 
@@ -278,10 +334,45 @@ export class AssignmentsService {
     );
     const sortOrder = query.sortOrder ?? 'desc';
 
+    let supervisorScope: Prisma.AssignmentWhereInput | undefined;
+    if (user.role === AppUserRole.SUPERVISOR) {
+      const supervisorProfileId =
+        await this.accessService.resolveSupervisorProfileId(
+          user,
+          organisationId,
+        );
+      if (!supervisorProfileId) {
+        supervisorScope = { officerId: { in: [] } };
+      } else {
+        const officerIds = await this.accessService.listAssignedOfficerIds(
+          organisationId,
+          supervisorProfileId,
+        );
+        if (query.officerId && !officerIds.includes(query.officerId)) {
+          supervisorScope = { officerId: { in: [] } };
+        } else {
+          const scopedOfficerId = query.officerId
+            ? query.officerId
+            : { in: officerIds };
+          supervisorScope = {
+            OR: [
+              { supervisorId: supervisorProfileId },
+              { officerId: scopedOfficerId },
+            ],
+          };
+        }
+      }
+    }
+
     const where: Prisma.AssignmentWhereInput = {
       organisationId,
-      ...(query.officerId ? { officerId: query.officerId } : {}),
-      ...(query.supervisorId ? { supervisorId: query.supervisorId } : {}),
+      ...supervisorScope,
+      ...(query.officerId && user.role !== AppUserRole.SUPERVISOR
+        ? { officerId: query.officerId }
+        : {}),
+      ...(query.supervisorId && user.role !== AppUserRole.SUPERVISOR
+        ? { supervisorId: query.supervisorId }
+        : {}),
       ...(query.shiftId ? { shiftId: query.shiftId } : {}),
       ...(query.siteId ? { shift: { siteId: query.siteId } } : {}),
       ...(query.status ? { status: query.status } : {}),
@@ -344,13 +435,22 @@ export class AssignmentsService {
       orderBy: { shift: { scheduledStartAt: 'asc' } },
     });
 
-    const relevant = candidates.find((assignment) => {
+    const inProgress = candidates.find(
+      (assignment) =>
+        assignment.status === AssignmentStatus.IN_PROGRESS && assignment.shift,
+    );
+    if (inProgress) {
+      return toAssignmentResponse(inProgress);
+    }
+
+    const inWindow = candidates.find((assignment) => {
       if (!assignment.shift) {
         return false;
       }
       const graceMs = assignment.shift.gracePeriodMinutes * 60_000;
+      // Allow officers to see the assignment from 2h before start until end + grace.
       const windowStart = new Date(
-        assignment.shift.scheduledStartAt.getTime() - 30 * 60_000,
+        assignment.shift.scheduledStartAt.getTime() - 2 * 60 * 60_000,
       );
       const windowEnd = new Date(
         assignment.shift.scheduledEndAt.getTime() + graceMs,
@@ -358,11 +458,9 @@ export class AssignmentsService {
       return now >= windowStart && now <= windowEnd;
     });
 
-    if (!relevant) {
-      return null;
-    }
-
-    return toAssignmentResponse(relevant);
+    // Do not promote far-future shifts to "current" — those belong in upcoming.
+    // Late clock-in after start is already covered by inWindow (start-2h → end+grace).
+    return inWindow ? toAssignmentResponse(inWindow) : null;
   }
 
   async findUpcoming(
@@ -378,18 +476,24 @@ export class AssignmentsService {
     const from = query.from ? new Date(query.from) : new Date();
     const to = query.to ? new Date(query.to) : undefined;
 
+    // Show assignments whose shift has not finished yet (started or future),
+    // not only those whose start is still in the future.
     const where: Prisma.AssignmentWhereInput = {
       organisationId,
       officerId,
       status: {
-        in: [AssignmentStatus.ASSIGNED, AssignmentStatus.CONFIRMED],
+        in: [
+          AssignmentStatus.ASSIGNED,
+          AssignmentStatus.CONFIRMED,
+          AssignmentStatus.IN_PROGRESS,
+        ],
       },
       shift: {
         deletedAt: null,
-        scheduledStartAt: {
+        scheduledEndAt: {
           gte: from,
-          ...(to ? { lte: to } : {}),
         },
+        ...(to ? { scheduledStartAt: { lte: to } } : {}),
       },
     };
 
@@ -399,6 +503,75 @@ export class AssignmentsService {
         skip,
         take: limit,
         orderBy: { shift: { scheduledStartAt: 'asc' } },
+        include: ASSIGNMENT_INCLUDE,
+      }),
+      this.prisma.assignment.count({ where }),
+    ]);
+
+    return {
+      data: items.map((a) => toAssignmentResponse(a)),
+      meta: buildPaginationMeta(page, limit, total),
+    };
+  }
+
+  async findHistory(
+    user: RequestUser,
+    query: ListUpcomingAssignmentsQueryDto,
+  ) {
+    const organisationId = requireOrganisationId(user);
+    const officerId = await this.accessService.resolveOfficerProfileId(
+      user,
+      organisationId,
+    );
+    const { page, limit, skip } = normalisePagination(query.page, query.limit);
+    const now = new Date();
+    const from = query.from ? new Date(query.from) : undefined;
+    const to = query.to ? new Date(query.to) : undefined;
+
+    const where: Prisma.AssignmentWhereInput = {
+      organisationId,
+      officerId,
+      shift: {
+        deletedAt: null,
+        ...(from || to
+          ? {
+              scheduledStartAt: {
+                ...(from ? { gte: from } : {}),
+                ...(to ? { lte: to } : {}),
+              },
+            }
+          : {}),
+      },
+      OR: [
+        {
+          status: {
+            in: [
+              AssignmentStatus.COMPLETED,
+              AssignmentStatus.CANCELLED,
+              AssignmentStatus.MISSED,
+              AssignmentStatus.REASSIGNED,
+            ],
+          },
+        },
+        {
+          status: {
+            in: [
+              AssignmentStatus.ASSIGNED,
+              AssignmentStatus.CONFIRMED,
+              AssignmentStatus.IN_PROGRESS,
+            ],
+          },
+          shift: { scheduledEndAt: { lt: now }, deletedAt: null },
+        },
+      ],
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.assignment.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { shift: { scheduledStartAt: 'desc' } },
         include: ASSIGNMENT_INCLUDE,
       }),
       this.prisma.assignment.count({ where }),
@@ -437,6 +610,11 @@ export class AssignmentsService {
   ) {
     const organisationId = requireOrganisationId(user);
     const existing = await this.findAssignmentOrThrow(organisationId, id);
+    await this.accessService.assertCanReadAssignment(
+      user,
+      organisationId,
+      existing,
+    );
     assertAssignmentTransition(existing.status, dto.status);
 
     const now = new Date();
@@ -560,6 +738,18 @@ export class AssignmentsService {
   ) {
     const organisationId = requireOrganisationId(user);
     const existing = await this.findAssignmentOrThrow(organisationId, id);
+    await this.accessService.assertCanReadAssignment(
+      user,
+      organisationId,
+      existing,
+    );
+    if (user.role === AppUserRole.SUPERVISOR) {
+      await this.accessService.assertSupervisorMayManageOfficer(
+        user,
+        organisationId,
+        dto.replacementOfficerId,
+      );
+    }
 
     if (
       existing.status !== AssignmentStatus.ASSIGNED &&
@@ -673,6 +863,11 @@ export class AssignmentsService {
   async cancel(user: RequestUser, id: string, ctx: ServiceRequestContext) {
     const organisationId = requireOrganisationId(user);
     const existing = await this.findAssignmentOrThrow(organisationId, id);
+    await this.accessService.assertCanReadAssignment(
+      user,
+      organisationId,
+      existing,
+    );
 
     if (
       existing.status === AssignmentStatus.IN_PROGRESS ||

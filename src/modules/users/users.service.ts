@@ -1,7 +1,9 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import {
   AccountStatus,
   AuditAction,
+  OfficerEmploymentStatus,
   Prisma,
   UserRole,
   type User,
@@ -29,6 +31,11 @@ import {
   normalizePhone,
   trimOrUndefined,
 } from '../../common/utils/normalize.util';
+import { LocalStorageProvider } from '../storage/local-storage.provider';
+import {
+  STORAGE_PROVIDER,
+  type StorageProvider,
+} from '../storage/storage.types';
 import { mapUserResponse } from './mappers/user.mapper';
 import type { CreateUserDto } from './dto/create-user.dto';
 import type { UpdateUserDto } from './dto/update-user.dto';
@@ -73,6 +80,9 @@ export class UsersService {
     private readonly passwordService: PasswordService,
     private readonly sessionService: SessionService,
     private readonly authAuditService: AuthAuditService,
+    @Inject(STORAGE_PROVIDER)
+    private readonly storage: StorageProvider,
+    private readonly localStorage: LocalStorageProvider,
   ) {}
 
   async create(
@@ -101,22 +111,26 @@ export class UsersService {
     const passwordHash = await this.passwordService.hash(dto.temporaryPassword);
     const mustChangePassword = dto.mustChangePassword ?? true;
 
-    const user = await this.prisma.user.create({
-      data: {
-        organisationId,
-        employeeId,
-        email,
-        phone,
-        passwordHash,
-        firstName,
-        middleName: middleName ?? null,
-        lastName,
-        displayName: displayName ?? null,
-        role: dto.role,
-        status: AccountStatus.ACTIVE,
-        mustChangePassword,
-        passwordChangedAt: null,
-      },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          organisationId,
+          employeeId,
+          email,
+          phone,
+          passwordHash,
+          firstName,
+          middleName: middleName ?? null,
+          lastName,
+          displayName: displayName ?? null,
+          role: dto.role,
+          status: AccountStatus.ACTIVE,
+          mustChangePassword,
+          passwordChangedAt: null,
+        },
+      });
+      await this.ensureRoleProfile(tx, created);
+      return created;
     });
 
     await this.authAuditService.record({
@@ -170,6 +184,71 @@ export class UsersService {
     const organisationId = requireOrganisationId(actor);
     const user = await this.findTenantUser(organisationId, userId, true);
     return mapUserResponse(user);
+  }
+
+  async updateMe(
+    actor: RequestUser,
+    dto: UpdateUserDto,
+    ctx: AuditRequestContext,
+  ) {
+    return this.updateProfile(actor, actor.id, dto, ctx);
+  }
+
+  async uploadMyAvatar(
+    actor: RequestUser,
+    file: Express.Multer.File | undefined,
+    ctx: AuditRequestContext,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new AppException(
+        'Avatar file is required',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.VALIDATION_ERROR,
+        [{ field: 'file', message: 'Multipart file field is required' }],
+      );
+    }
+    const mimeType = file.mimetype || 'application/octet-stream';
+    if (!mimeType.startsWith('image/')) {
+      throw new AppException(
+        'Avatar must be an image',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.STORAGE_CONTENT_TYPE_INVALID,
+        [{ field: 'file', message: `Unexpected mimeType ${mimeType}` }],
+      );
+    }
+    if (file.size > 5_242_880) {
+      throw new AppException(
+        'Avatar exceeds maximum allowed size',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.STORAGE_FILE_TOO_LARGE,
+      );
+    }
+
+    const organisationId = requireOrganisationId(actor);
+    const ext = mimeType.includes('png')
+      ? '.png'
+      : mimeType.includes('webp')
+        ? '.webp'
+        : '.jpg';
+    const storageKey = `${organisationId}/avatars/${actor.id}/${randomUUID()}${ext}`;
+    this.localStorage.putObject(storageKey, file.buffer);
+    const avatarUrl = this.storage.getPublicUrl(storageKey);
+    const updated = await this.prisma.user.update({
+      where: { id: actor.id },
+      data: { avatarUrl },
+    });
+    await this.authAuditService.record({
+      organisationId,
+      actorUserId: actor.id,
+      action: AuditAction.UPDATE,
+      entityType: 'User',
+      entityId: updated.id,
+      requestId: ctx.requestId,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      metadata: { selfUpdate: true, avatarUploaded: true, storageKey },
+    });
+    return mapUserResponse(updated);
   }
 
   async updateProfile(
@@ -268,9 +347,13 @@ export class UsersService {
       await this.assertNotLastActiveAdmin(organisationId, existing.id);
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: existing.id },
-      data: { role: dto.role },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.user.update({
+        where: { id: existing.id },
+        data: { role: dto.role },
+      });
+      await this.ensureRoleProfile(tx, next);
+      return next;
     });
 
     await this.authAuditService.record({
@@ -544,6 +627,120 @@ export class UsersService {
         ErrorCode.USER_ROLE_FORBIDDEN,
       );
     }
+  }
+
+  /**
+   * Assignments and officer APIs require OfficerProfile / SupervisorProfile rows.
+   * Users created via /users historically skipped this — ensure profiles exist.
+   */
+  private async ensureRoleProfile(
+    tx: Prisma.TransactionClient,
+    user: Pick<User, 'id' | 'organisationId' | 'employeeId' | 'role'>,
+  ): Promise<void> {
+    const organisationId = user.organisationId;
+    const employeeId = user.employeeId?.trim();
+    if (!organisationId || !employeeId) {
+      return;
+    }
+
+    if (user.role === UserRole.SECURITY_OFFICER) {
+      const existing = await tx.officerProfile.findFirst({
+        where: { userId: user.id },
+        select: { id: true, deletedAt: true },
+      });
+      if (existing) {
+        if (existing.deletedAt) {
+          await tx.officerProfile.update({
+            where: { id: existing.id },
+            data: {
+              deletedAt: null,
+              employmentStatus: OfficerEmploymentStatus.ACTIVE,
+            },
+          });
+        }
+        return;
+      }
+
+      const officerNumber = await this.allocateUniqueCode(
+        tx,
+        'officer',
+        organisationId,
+        employeeId,
+      );
+      await tx.officerProfile.create({
+        data: {
+          organisationId,
+          userId: user.id,
+          officerNumber,
+          employmentStatus: OfficerEmploymentStatus.ACTIVE,
+          rankOrTitle: 'Security Officer',
+        },
+      });
+      return;
+    }
+
+    if (user.role === UserRole.SUPERVISOR) {
+      const existing = await tx.supervisorProfile.findFirst({
+        where: { userId: user.id },
+        select: { id: true, deletedAt: true },
+      });
+      if (existing) {
+        if (existing.deletedAt) {
+          await tx.supervisorProfile.update({
+            where: { id: existing.id },
+            data: { deletedAt: null },
+          });
+        }
+        return;
+      }
+
+      const supervisorNumber = await this.allocateUniqueCode(
+        tx,
+        'supervisor',
+        organisationId,
+        employeeId,
+      );
+      await tx.supervisorProfile.create({
+        data: {
+          organisationId,
+          userId: user.id,
+          supervisorNumber,
+          title: 'Supervisor',
+        },
+      });
+    }
+  }
+
+  private async allocateUniqueCode(
+    tx: Prisma.TransactionClient,
+    kind: 'officer' | 'supervisor',
+    organisationId: string,
+    employeeId: string,
+  ): Promise<string> {
+    const base = employeeId.trim().toUpperCase() || 'STAFF';
+    const candidates = [
+      base,
+      kind === 'officer' ? `OFF-${base}` : `SUP-${base}`,
+      `${kind === 'officer' ? 'OFF' : 'SUP'}-${base}-${Date.now().toString(36).toUpperCase()}`,
+    ];
+
+    for (const candidate of candidates) {
+      const clash =
+        kind === 'officer'
+          ? await tx.officerProfile.findFirst({
+              where: { organisationId, officerNumber: candidate },
+              select: { id: true },
+            })
+          : await tx.supervisorProfile.findFirst({
+              where: { organisationId, supervisorNumber: candidate },
+              select: { id: true },
+            });
+      if (!clash) {
+        return candidate;
+      }
+    }
+
+    return `${kind === 'officer' ? 'OFF' : 'SUP'}-${randomUUID().slice(0, 8).toUpperCase()}`;
   }
 
   private assertStatusTransition(

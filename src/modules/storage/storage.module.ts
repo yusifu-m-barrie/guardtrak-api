@@ -3,12 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { CloudflareR2Provider } from './cloudflare-r2.provider';
 import { NoOpThumbnailHook, THUMBNAIL_HOOK } from './hooks/thumbnail.hook';
 import { NoOpVirusScanHook, VIRUS_SCAN_HOOK } from './hooks/virus-scan.hook';
+import { LocalStorageController } from './local-storage.controller';
 import { LocalStorageProvider } from './local-storage.provider';
 import { S3Provider } from './s3.provider';
 import { STORAGE_PROVIDER, type StorageProvider } from './storage.types';
 
 @Global()
 @Module({
+  controllers: [LocalStorageController],
   providers: [
     LocalStorageProvider,
     S3Provider,

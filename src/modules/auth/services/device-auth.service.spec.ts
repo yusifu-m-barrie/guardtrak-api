@@ -60,7 +60,11 @@ describe('DeviceAuthService', () => {
   });
 
   it('keeps existing PENDING devices pending when auto-approve is false', async () => {
-    configService.get.mockReturnValue(false);
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'auth.newDeviceAutoApprove') return false;
+      if (key === 'auth.enforceDeviceOwnership') return true;
+      return undefined;
+    });
     prisma.device.findUnique.mockResolvedValue({
       id: 'device-1',
       organisationId: 'org-1',
@@ -97,5 +101,78 @@ describe('DeviceAuthService', () => {
       data: { status: DeviceStatus };
     };
     expect(updateArg.data.status).toBe(DeviceStatus.PENDING);
+  });
+
+  it('rejects ownership mismatch when enforceDeviceOwnership is true', async () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'auth.enforceDeviceOwnership') return true;
+      if (key === 'auth.newDeviceAutoApprove') return true;
+      return undefined;
+    });
+    prisma.device.findUnique.mockResolvedValue({
+      id: 'device-1',
+      organisationId: 'org-1',
+      userId: 'user-owner',
+      status: DeviceStatus.ACTIVE,
+      deviceName: null,
+      manufacturer: null,
+      model: null,
+      operatingSystem: null,
+      operatingSystemVersion: null,
+      appVersion: null,
+      trustedAt: new Date(),
+      trustScore: 60,
+    });
+
+    await expect(
+      service.upsertForLogin({
+        organisationId: 'org-1',
+        userId: 'user-other',
+        installationId: 'install-1',
+        platform: DevicePlatform.WEB,
+      }),
+    ).rejects.toMatchObject({
+      message: 'This device is already registered to another account',
+    });
+  });
+
+  it('rebinds device to new user when enforceDeviceOwnership is false', async () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'auth.enforceDeviceOwnership') return false;
+      if (key === 'auth.newDeviceAutoApprove') return true;
+      return undefined;
+    });
+    prisma.device.findUnique.mockResolvedValue({
+      id: 'device-1',
+      organisationId: 'org-1',
+      userId: 'user-owner',
+      status: DeviceStatus.ACTIVE,
+      deviceName: null,
+      manufacturer: null,
+      model: null,
+      operatingSystem: null,
+      operatingSystemVersion: null,
+      appVersion: null,
+      trustedAt: new Date(),
+      trustScore: 60,
+    });
+    prisma.device.update.mockResolvedValue({
+      id: 'device-1',
+      organisationId: 'org-1',
+      userId: 'user-other',
+      status: DeviceStatus.ACTIVE,
+    });
+
+    await service.upsertForLogin({
+      organisationId: 'org-1',
+      userId: 'user-other',
+      installationId: 'install-1',
+      platform: DevicePlatform.WEB,
+    });
+
+    const updateArg = prisma.device.update.mock.calls[0][0] as {
+      data: { userId: string };
+    };
+    expect(updateArg.data.userId).toBe('user-other');
   });
 });

@@ -55,6 +55,19 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: corsOrigins.length > 0 ? corsOrigins : false,
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'X-Requested-With',
+      'Idempotency-Key',
+    ],
+    exposedHeaders: [
+      'X-API-Version',
+      'X-API-Deprecation',
+      'X-API-Supported-Versions',
+    ],
   });
 
   app.useGlobalPipes(
@@ -92,9 +105,10 @@ async function bootstrap(): Promise<void> {
     logger.log('Swagger is disabled for this environment');
   }
 
-  await app.listen(port);
+  // Bind all interfaces so Railway/Docker public networking can reach the process.
+  await app.listen(port, '0.0.0.0');
 
-  logger.log(`GuardTrak API listening on port ${port}`);
+  logger.log(`GuardTrak API listening on 0.0.0.0:${port}`);
   logger.log(`Environment: ${nodeEnv}`);
   logger.log(`Global prefix: /${apiPrefix}`);
 }

@@ -27,11 +27,50 @@ export class PatrolAccessService {
     );
   }
 
+  listAssignedOfficerIds(organisationId: string, supervisorProfileId: string) {
+    return this.assignmentAccess.listAssignedOfficerIds(
+      organisationId,
+      supervisorProfileId,
+    );
+  }
+
+  assertSupervisorMayManageOfficer(
+    user: RequestUser,
+    organisationId: string,
+    officerId: string,
+  ) {
+    return this.assignmentAccess.assertSupervisorMayManageOfficer(
+      user,
+      organisationId,
+      officerId,
+    );
+  }
+
   async assertCanReadPatrolAssignment(
     user: RequestUser,
     organisationId: string,
     patrol: { officerId: string; siteId: string },
   ): Promise<void> {
+    if (user.role === 'SUPERVISOR') {
+      const supervisorId = await this.resolveSupervisorProfileId(
+        user,
+        organisationId,
+      );
+      if (supervisorId) {
+        const linked = await this.prisma.supervisorOfficer.findFirst({
+          where: {
+            supervisorId,
+            officerId: patrol.officerId,
+            organisationId,
+            OR: [{ activeUntil: null }, { activeUntil: { gt: new Date() } }],
+          },
+        });
+        if (linked) {
+          return;
+        }
+      }
+      tenantNotFound(ErrorCode.PATROL_ASSIGNMENT_NOT_FOUND);
+    }
     if (userHasPermission(user, 'patrol-assignment:read')) {
       return;
     }

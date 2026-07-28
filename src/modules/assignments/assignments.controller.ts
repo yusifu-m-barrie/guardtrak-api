@@ -86,6 +86,18 @@ export class AssignmentsController {
     return this.assignmentsService.findUpcoming(user, query);
   }
 
+  @Get('history')
+  @Permissions('assignment:read:self')
+  @ApiOperation({
+    summary: 'Past assignments for authenticated officer (completed, cancelled, ended)',
+  })
+  findHistory(
+    @CurrentUser() user: RequestUser,
+    @Query() query: ListUpcomingAssignmentsQueryDto,
+  ) {
+    return this.assignmentsService.findHistory(user, query);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get assignment by ID (tenant + self scoped)' })
   findOne(

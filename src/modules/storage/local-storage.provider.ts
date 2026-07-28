@@ -60,13 +60,15 @@ export class LocalStorageProvider implements StorageProvider {
       JSON.stringify(ticket),
       'utf8',
     );
-    // Local upload URL is a ticket the complete flow understands.
-    const uploadUrl = `local-upload://${ticketId}`;
+    // Prefer HTTP so browsers/Expo can PUT bytes; keep local-upload:// as alias for mobile base64 path.
+    const uploadUrl = `${this.apiBaseUrl()}/storage/local/upload/${ticketId}`;
     return Promise.resolve({
       uploadUrl,
       storageKey: input.storageKey,
       expiresAt,
       method: 'PUT',
+      // Extra field consumed by older mobile clients that still look for the scheme:
+      // they can also complete via localFileBase64 if they parse ticket from path.
     });
   }
 
@@ -188,7 +190,8 @@ export class LocalStorageProvider implements StorageProvider {
     if (base) {
       return `${base}/${storageKey}`;
     }
-    return `file://${this.objectPath(storageKey)}`;
+    // Query form avoids Express/%2F path issues with nested storage keys.
+    return `${this.apiBaseUrl()}/storage/local/object?key=${encodeURIComponent(storageKey)}`;
   }
 
   getSignedDownloadUrl(
@@ -197,15 +200,43 @@ export class LocalStorageProvider implements StorageProvider {
   ): Promise<{ downloadUrl: string; expiresAt: Date }> {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
     const token = randomBytes(12).toString('hex');
+    const mimeType = mimeTypeFromStorageKey(storageKey);
     writeFileSync(
       join(this.root, '.tickets', `dl-${token}`),
-      JSON.stringify({ storageKey, expiresAt: expiresAt.getTime() }),
+      JSON.stringify({
+        storageKey,
+        expiresAt: expiresAt.getTime(),
+        mimeType,
+      }),
       'utf8',
     );
     return Promise.resolve({
-      downloadUrl: `local-download://${token}`,
+      downloadUrl: `${this.apiBaseUrl()}/storage/local/download/${token}`,
       expiresAt,
     });
+  }
+
+  getRoot(): string {
+    return this.root;
+  }
+
+  resolveObjectPath(storageKey: string): string {
+    return this.objectPath(storageKey);
+  }
+
+  /** Absolute API base including `/api/v1` for local HTTP ticket URLs. */
+  private apiBaseUrl(): string {
+    const configured =
+      this.configService.get<string>('storage.publicUrl')?.replace(/\/$/, '') ??
+      '';
+    if (configured) {
+      return configured;
+    }
+    const port = this.configService.get<number>('app.port') ?? 3000;
+    const prefix = (
+      this.configService.get<string>('app.apiPrefix') ?? 'api/v1'
+    ).replace(/^\/+|\/+$/g, '');
+    return `http://127.0.0.1:${port}/${prefix}`;
   }
 
   /** Ensure object exists for e2e/dev by writing placeholder bytes. */
@@ -219,4 +250,16 @@ export class LocalStorageProvider implements StorageProvider {
   private objectPath(storageKey: string): string {
     return join(this.root, 'objects', ...storageKey.split('/'));
   }
+}
+
+function mimeTypeFromStorageKey(storageKey: string): string {
+  const lower = storageKey.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  return 'application/octet-stream';
 }

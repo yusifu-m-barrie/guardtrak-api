@@ -48,6 +48,7 @@ import {
   canReopenIncident,
 } from './incident-transitions.util';
 import {
+  INCIDENT_INCLUDE,
   toIncidentNoteResponse,
   toIncidentResponse,
   toIncidentStatusEventResponse,
@@ -174,7 +175,11 @@ export class IncidentsService {
         },
       });
       if (existing) {
-        return toIncidentResponse(existing);
+        const hydrated = await this.prisma.incident.findFirst({
+          where: { id: existing.id },
+          include: INCIDENT_INCLUDE,
+        });
+        return toIncidentResponse(hydrated ?? existing);
       }
     }
 
@@ -256,7 +261,11 @@ export class IncidentsService {
       actorUserId: user.id,
     });
 
-    return toIncidentResponse(incident);
+    const hydrated = await this.prisma.incident.findFirst({
+      where: { id: incident.id },
+      include: INCIDENT_INCLUDE,
+    });
+    return toIncidentResponse(hydrated ?? incident);
   }
 
   private async notifySupervisorsOnCreate(
@@ -348,6 +357,7 @@ export class IncidentsService {
         orderBy: { [sort]: 'desc' },
         skip,
         take: limit,
+        include: INCIDENT_INCLUDE,
       }),
     ]);
     return {
@@ -392,6 +402,7 @@ export class IncidentsService {
     const organisationId = requireOrganisationId(user);
     const incident = await this.prisma.incident.findFirst({
       where: { id, organisationId, deletedAt: null },
+      include: INCIDENT_INCLUDE,
     });
     if (!incident) {
       tenantNotFound(ErrorCode.INCIDENT_NOT_FOUND);
@@ -434,7 +445,7 @@ export class IncidentsService {
         incident,
       );
     }
-    const updated = await this.prisma.incident.update({
+    await this.prisma.incident.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
@@ -466,7 +477,7 @@ export class IncidentsService {
       incidentId: id,
       actorUserId: user.id,
     });
-    return toIncidentResponse(updated);
+    return this.reloadIncidentResponse(organisationId, id);
   }
 
   async assign(
@@ -508,7 +519,7 @@ export class IncidentsService {
       assertIncidentTransition(incident.status, nextStatus);
     }
     const now = new Date();
-    const updated = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       const row = await tx.incident.update({
         where: { id },
         data: {
@@ -556,7 +567,7 @@ export class IncidentsService {
       actorUserId: user.id,
       requestId: ctx.requestId,
     });
-    return toIncidentResponse(updated);
+    return this.reloadIncidentResponse(organisationId, id);
   }
 
   async close(
@@ -686,14 +697,24 @@ export class IncidentsService {
       organisationId,
       incident,
     );
+    const userSelect = {
+      id: true,
+      employeeId: true,
+      firstName: true,
+      lastName: true,
+      displayName: true,
+      avatarUrl: true,
+    } as const;
     const [events, notes] = await this.prisma.$transaction([
       this.prisma.incidentStatusEvent.findMany({
         where: { incidentId: id, organisationId },
         orderBy: { occurredAt: 'asc' },
+        include: { actorUser: { select: userSelect } },
       }),
       this.prisma.incidentNote.findMany({
         where: { incidentId: id, organisationId, deletedAt: null },
         orderBy: { createdAt: 'asc' },
+        include: { authorUser: { select: userSelect } },
       }),
     ]);
     const filteredNotes = notes.filter((n) => {
@@ -733,7 +754,7 @@ export class IncidentsService {
     );
     assertIncidentTransition(incident.status, to);
     const now = new Date();
-    const updated = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       const row = await tx.incident.update({
         where: { id },
         data: {
@@ -788,16 +809,21 @@ export class IncidentsService {
         },
       );
     }
-    return toIncidentResponse(updated);
+    return this.reloadIncidentResponse(organisationId, id);
   }
 
   private async requireIncident(organisationId: string, id: string) {
     const incident = await this.prisma.incident.findFirst({
       where: { id, organisationId, deletedAt: null },
+      include: INCIDENT_INCLUDE,
     });
     if (!incident) {
       tenantNotFound(ErrorCode.INCIDENT_NOT_FOUND);
     }
     return incident;
+  }
+
+  private async reloadIncidentResponse(organisationId: string, id: string) {
+    return toIncidentResponse(await this.requireIncident(organisationId, id));
   }
 }

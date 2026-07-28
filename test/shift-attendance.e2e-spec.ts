@@ -571,7 +571,7 @@ describe('Shift attendance Phase 5 (e2e)', () => {
       const inactive = await request(app.getHttpServer())
         .get('/api/v1/attendance/current')
         .set(auth(officer.accessToken))
-        .expect(200);
+        .expect(403);
       assertNoSensitive(inactive.body);
 
       await prisma.device.update({

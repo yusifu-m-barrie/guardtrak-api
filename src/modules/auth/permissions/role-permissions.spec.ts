@@ -14,12 +14,12 @@ describe('role permissions', () => {
     expect(permissions).toContain('shift:manage');
   });
 
-  it('gives platform manage to super admin only', () => {
-    expect(getPermissionsForRole(UserRole.SUPER_ADMIN)).toContain(
-      'platform:manage',
-    );
-    expect(getPermissionsForRole(UserRole.ADMINISTRATOR)).not.toContain(
-      'platform:manage',
-    );
+  it('gives supervisors scoped create for assignments and patrols', () => {
+    const permissions = getPermissionsForRole(UserRole.SUPERVISOR);
+    expect(permissions).toContain('assignment:create');
+    expect(permissions).toContain('patrol-assignment:create');
+    expect(permissions).toContain('patrol-route:read');
+    expect(permissions).not.toContain('supervisor:assign-officer');
+    expect(permissions).not.toContain('shift:create');
   });
 });

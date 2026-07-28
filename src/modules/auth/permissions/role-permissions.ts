@@ -46,6 +46,9 @@ const SUPERVISOR_PERMISSIONS: AuthPermission[] = [
   'site:read',
   'shift:read',
   'assignment:read',
+  'assignment:create',
+  'assignment:update',
+  'assignment:cancel',
   'attendance:read',
   'attendance:read:assigned',
   'attendance:review',
@@ -53,8 +56,8 @@ const SUPERVISOR_PERMISSIONS: AuthPermission[] = [
   'break:read',
   'break:review',
   'patrol-route:read',
-  'patrol-checkpoint:read',
   'patrol-assignment:read',
+  'patrol-assignment:create',
   'patrol-assignment:review',
   'patrol-visit:read',
   'patrol-visit:review',
@@ -215,7 +218,7 @@ const ROLE_PERMISSIONS: Record<UserRole, AuthPermission[]> = {
 };
 
 export function getPermissionsForRole(role: UserRole): AuthPermission[] {
-  return [...ROLE_PERMISSIONS[role]];
+  return [...new Set(ROLE_PERMISSIONS[role])];
 }
 
 export function roleHasPermission(role: UserRole, permission: string): boolean {

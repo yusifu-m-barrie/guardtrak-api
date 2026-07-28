@@ -65,6 +65,18 @@ export class ShiftsController {
     return this.shiftsService.findOne(user, id);
   }
 
+  @Get(':id/assignment')
+  @Permissions('assignment:read:self')
+  @ApiOperation({
+    summary: 'Get the current officer assignment for a shift (tenant scoped)',
+  })
+  getAssignment(
+    @CurrentUser() user: RequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.shiftsService.getAssignmentForShift(user, id);
+  }
+
   @Patch(':id')
   @Permissions('shift:update')
   @ApiOperation({ summary: 'Update a shift' })

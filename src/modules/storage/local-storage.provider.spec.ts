@@ -36,8 +36,8 @@ describe('LocalStorageProvider', () => {
       sizeBytes: 4,
       ttlSeconds: 900,
     });
-    expect(upload.uploadUrl.startsWith('local-upload://')).toBe(true);
-    const ticketId = upload.uploadUrl.replace('local-upload://', '');
+    expect(upload.uploadUrl.includes('/storage/local/upload/')).toBe(true);
+    const ticketId = upload.uploadUrl.split('/').pop()!;
     const written = provider.writeObjectFromTicket(
       ticketId,
       Buffer.from('test'),

@@ -19,6 +19,8 @@ function rowId(rows: Array<Record<string, unknown>>, index = 0): string {
 }
 
 describeDb('PostgreSQL schema constraints (local DB via pg)', () => {
+  jest.setTimeout(60_000);
+
   let pool: Pool;
   const orgId = randomUUID();
   const suffix = randomUUID().slice(0, 8);
@@ -300,6 +302,11 @@ describeDb('PostgreSQL schema constraints (local DB via pg)', () => {
       `SELECT id FROM assignments WHERE "organisationId" = $1 LIMIT 1`,
       [orgId],
     );
+    if (!admin.rows[0] || !officer.rows[0] || !site.rows[0] || !shift.rows[0] || !assignment.rows[0]) {
+      throw new Error(
+        'Expected seed rows from prior constraint tests (admin/officer/site/shift/assignment)',
+      );
+    }
 
     const routeId = randomUUID();
     await pool.query(

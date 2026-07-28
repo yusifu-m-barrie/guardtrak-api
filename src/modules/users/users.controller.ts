@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -11,8 +11,18 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import type { Request } from 'express';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -49,6 +59,44 @@ export class UsersController {
   })
   list(@CurrentUser() user: RequestUser, @Query() query: ListUsersQueryDto) {
     return this.usersService.list(user, query);
+  }
+
+  @Patch('me')
+  @Permissions('profile:update:self')
+  @ApiOperation({ summary: 'Update the authenticated user profile' })
+  updateMe(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateUserDto,
+    @Req() req: Request & { requestId?: string },
+  ) {
+    return this.usersService.updateMe(user, dto, this.ctx(req));
+  }
+
+  @Post('me/avatar')
+  @Permissions('profile:update:self')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Upload avatar for the authenticated user' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5_242_880 },
+    }),
+  )
+  uploadMyAvatar(
+    @CurrentUser() user: RequestUser,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() req: Request & { requestId?: string },
+  ) {
+    return this.usersService.uploadMyAvatar(user, file, this.ctx(req));
   }
 
   @Get(':id')

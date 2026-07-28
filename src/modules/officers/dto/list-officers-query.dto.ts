@@ -27,6 +27,16 @@ export class ListOfficersQueryDto extends PaginationQueryDto {
   @IsUUID()
   supervisorId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'When true, only officers with no active supervisor assignment are returned',
+    default: false,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  unassignedOnly?: boolean = false;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()

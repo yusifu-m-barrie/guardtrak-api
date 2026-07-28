@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -68,6 +71,18 @@ export class NotificationsController {
     return this.notificationsService.markAllRead(user);
   }
 
+  @Post('notifications/clear-read')
+  @Permissions('notification:update:self')
+  @ApiOperation({
+    summary: 'Archive all read notifications; unread notifications are kept',
+  })
+  clearRead(
+    @CurrentUser() user: RequestUser,
+    @Req() req: Request & { requestId?: string },
+  ) {
+    return this.notificationsService.clearRead(user, this.ctx(req));
+  }
+
   @Get('notifications/:id')
   @Permissions('notification:read:self')
   @ApiOperation({ summary: 'Get one notification by ID' })
@@ -86,6 +101,21 @@ export class NotificationsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.notificationsService.markRead(user, id);
+  }
+
+  @Delete('notifications/:id')
+  @Permissions('notification:update:self')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary:
+      'Archive (soft-delete) a notification; audit/delivery history retained',
+  })
+  async remove(
+    @CurrentUser() user: RequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request & { requestId?: string },
+  ): Promise<void> {
+    await this.notificationsService.archiveOne(user, id, this.ctx(req));
   }
 
   @Post('devices/push-token')

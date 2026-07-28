@@ -197,7 +197,7 @@ export class EmergenciesService {
   async findAll(user: RequestUser, query: ListEmergenciesQueryDto) {
     const organisationId = requireOrganisationId(user);
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
-    const where = this.scopeWhere(user, organisationId, query.status);
+    const where = await this.scopeWhere(user, organisationId, query.status);
     const [total, rows] = await this.prisma.$transaction([
       this.prisma.emergency.count({ where }),
       this.prisma.emergency.findMany({
@@ -225,7 +225,7 @@ export class EmergenciesService {
     if (!row) {
       tenantNotFound(ErrorCode.EMERGENCY_NOT_FOUND);
     }
-    this.assertCanRead(user, organisationId, row);
+    await this.assertCanRead(user, organisationId, row);
     return toEmergencyResponse(row);
   }
 
@@ -338,34 +338,73 @@ export class EmergenciesService {
     return `${prefix}${String(seq).padStart(4, '0')}`;
   }
 
-  private scopeWhere(
+  private async scopeWhere(
     user: RequestUser,
     organisationId: string,
     status?: string,
-  ): Prisma.EmergencyWhereInput {
+  ): Promise<Prisma.EmergencyWhereInput> {
     const statusFilter = status ? { status: toDbEmergencyStatus(status) } : {};
     if (
       userHasPermission(user, 'emergency:manage') ||
-      userHasPermission(user, 'emergency:read') ||
-      user.role === UserRole.ADMINISTRATOR ||
-      user.role === UserRole.SUPERVISOR
+      user.role === UserRole.ADMINISTRATOR
     ) {
+      return { organisationId, ...statusFilter };
+    }
+    if (user.role === UserRole.SUPERVISOR) {
+      const supervisorProfileId =
+        await this.assignmentAccess.resolveSupervisorProfileId(
+          user,
+          organisationId,
+        );
+      if (!supervisorProfileId) {
+        return { organisationId, officerId: { in: [] }, ...statusFilter };
+      }
+      const officerIds = await this.assignmentAccess.listAssignedOfficerIds(
+        organisationId,
+        supervisorProfileId,
+      );
+      return {
+        organisationId,
+        officerId: { in: officerIds },
+        ...statusFilter,
+      };
+    }
+    if (userHasPermission(user, 'emergency:read')) {
       return { organisationId, ...statusFilter };
     }
     return { organisationId, userId: user.id, ...statusFilter };
   }
 
-  private assertCanRead(
+  private async assertCanRead(
     user: RequestUser,
-    _organisationId: string,
-    row: { userId: string },
-  ): void {
+    organisationId: string,
+    row: { userId: string; officerId: string },
+  ): Promise<void> {
     if (
-      userHasPermission(user, 'emergency:read') ||
       userHasPermission(user, 'emergency:manage') ||
-      user.role === UserRole.SUPERVISOR ||
       user.role === UserRole.ADMINISTRATOR
     ) {
+      return;
+    }
+    if (user.role === UserRole.SUPERVISOR) {
+      const supervisorProfileId =
+        await this.assignmentAccess.resolveSupervisorProfileId(
+          user,
+          organisationId,
+        );
+      if (!supervisorProfileId) {
+        tenantNotFound(ErrorCode.EMERGENCY_NOT_FOUND);
+      }
+      const officerIds = await this.assignmentAccess.listAssignedOfficerIds(
+        organisationId,
+        supervisorProfileId,
+      );
+      if (officerIds.includes(row.officerId)) {
+        return;
+      }
+      tenantNotFound(ErrorCode.EMERGENCY_NOT_FOUND);
+    }
+    if (userHasPermission(user, 'emergency:read')) {
       return;
     }
     if (row.userId === user.id) {

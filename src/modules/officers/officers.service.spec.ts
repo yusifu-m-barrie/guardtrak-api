@@ -49,6 +49,12 @@ describe('OfficersService', () => {
       { assertPolicy, hash } as never,
       { revokeAllForUser } as never,
       { record } as never,
+      {
+        createUploadUrl: jest.fn(),
+        completeUpload: jest.fn(),
+        getPublicUrl: jest.fn(),
+      } as never,
+      { writeObjectFromTicket: jest.fn(), putObject: jest.fn() } as never,
     );
   });
 

@@ -46,6 +46,9 @@ const ROUTE_INCLUDE = {
       name: true,
       code: true,
       status: true,
+      latitude: true,
+      longitude: true,
+      checkpointDefaultRadiusMeters: true,
       client: { select: { id: true, name: true, status: true } },
     },
   },
@@ -62,6 +65,8 @@ const ROUTE_INCLUDE = {
       active: true,
       allowedRadiusMeters: true,
       qrCodeHash: true,
+      latitude: true,
+      longitude: true,
     },
   },
   _count: {

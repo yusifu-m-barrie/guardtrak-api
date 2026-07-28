@@ -11,14 +11,20 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiNoContentResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
+import { memoryStorage } from 'multer';
 import { Permissions } from '../../common/decorators';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { REQUEST_ID_HEADER } from '../../common/constants/metadata-keys';
@@ -75,6 +81,38 @@ export class OfficersController {
     @Req() req: Request & { requestId?: string },
   ) {
     return this.officersService.updateMe(user, dto, this.auditContext(req));
+  }
+
+  @Post('me/avatar')
+  @Permissions('profile:update:self')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Upload current officer avatar (multipart)' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5_242_880 },
+    }),
+  )
+  uploadAvatar(
+    @CurrentUser() user: RequestUser,
+    @UploadedFile()
+    file: Express.Multer.File | undefined,
+    @Req() req: Request & { requestId?: string },
+  ) {
+    return this.officersService.uploadAvatar(
+      user,
+      file,
+      this.auditContext(req),
+    );
   }
 
   @Get(':id')

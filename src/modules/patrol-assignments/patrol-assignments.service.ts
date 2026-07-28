@@ -11,6 +11,7 @@ import {
 } from '../../../generated/prisma/client';
 import { AppException } from '../../common/exceptions/app.exception';
 import { ErrorCode } from '../../common/constants/error-codes';
+import { UserRole as AppUserRole } from '../../common/enums/user-role.enum';
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
 import { hashRequestPayload } from '../../common/idempotency/request-hash.util';
@@ -70,6 +71,32 @@ const PATROL_INCLUDE = {
   site: {
     select: { id: true, name: true, code: true, status: true },
   },
+  officer: {
+    select: {
+      id: true,
+      officerNumber: true,
+      employmentStatus: true,
+      user: {
+        select: {
+          id: true,
+          employeeId: true,
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  },
+  shift: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      scheduledStartAt: true,
+      scheduledEndAt: true,
+    },
+  },
   checkpointSnapshots: { orderBy: { sequence: 'asc' as const } },
   visits: {
     select: {
@@ -77,6 +104,29 @@ const PATROL_INCLUDE = {
       assignmentCheckpointId: true,
       status: true,
       patrolCheckpointId: true,
+      visitedAtServer: true,
+      latitude: true,
+      longitude: true,
+    },
+    orderBy: { visitedAtServer: 'asc' as const },
+  },
+  events: {
+    where: { reason: 'Patrol assignment created' },
+    orderBy: { createdAt: 'asc' as const },
+    take: 1,
+    select: {
+      actorUserId: true,
+      createdAt: true,
+      actorUser: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          employeeId: true,
+          role: true,
+        },
+      },
     },
   },
 } satisfies Prisma.PatrolAssignmentInclude;
@@ -98,6 +148,20 @@ export class PatrolAssignmentsService {
     ctx: ServiceRequestContext,
   ) {
     const organisationId = requireOrganisationId(user);
+    if (user.role === AppUserRole.SUPERVISOR) {
+      const shiftAssignment = await this.prisma.assignment.findFirst({
+        where: { id: dto.assignmentId, organisationId },
+        select: { officerId: true },
+      });
+      if (!shiftAssignment) {
+        tenantNotFound(ErrorCode.ASSIGNMENT_NOT_FOUND);
+      }
+      await this.accessService.assertSupervisorMayManageOfficer(
+        user,
+        organisationId,
+        shiftAssignment.officerId,
+      );
+    }
     const created = await this.createOne(organisationId, user.id, dto, ctx);
     return this.toResponseWithProgress(created);
   }
@@ -130,15 +194,50 @@ export class PatrolAssignmentsService {
     );
     const sortOrder = query.sortOrder ?? 'desc';
 
+    let supervisorScope: Prisma.PatrolAssignmentWhereInput | undefined;
+    if (user.role === AppUserRole.SUPERVISOR) {
+      const supervisorProfileId =
+        await this.accessService.resolveSupervisorProfileId(
+          user,
+          organisationId,
+        );
+      if (!supervisorProfileId) {
+        supervisorScope = { officerId: { in: [] } };
+      } else {
+        const officerIds = await this.accessService.listAssignedOfficerIds(
+          organisationId,
+          supervisorProfileId,
+        );
+
+        if (query.officerId && !officerIds.includes(query.officerId)) {
+          supervisorScope = { officerId: { in: [] } };
+        } else {
+          supervisorScope = {
+            OR: [
+              {
+                officerId: query.officerId
+                  ? query.officerId
+                  : { in: officerIds },
+              },
+              { assignment: { supervisorId: supervisorProfileId } },
+            ],
+          };
+        }
+      }
+    }
+
     const where: Prisma.PatrolAssignmentWhereInput = {
       organisationId,
+      ...supervisorScope,
       ...(query.patrolRouteId ? { patrolRouteId: query.patrolRouteId } : {}),
       ...(query.assignmentId ? { assignmentId: query.assignmentId } : {}),
-      ...(query.officerId ? { officerId: query.officerId } : {}),
+      ...(query.officerId && user.role !== AppUserRole.SUPERVISOR
+        ? { officerId: query.officerId }
+        : {}),
       ...(query.shiftId ? { shiftId: query.shiftId } : {}),
       ...(query.siteId ? { siteId: query.siteId } : {}),
       ...(query.status ? { status: query.status } : {}),
-      ...(query.supervisorId
+      ...(query.supervisorId && user.role !== AppUserRole.SUPERVISOR
         ? { assignment: { supervisorId: query.supervisorId } }
         : {}),
       ...(query.scheduledFrom || query.scheduledTo
