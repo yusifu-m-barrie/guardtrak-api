@@ -49,13 +49,25 @@ export function mapPrismaError(error: unknown): MappedPrismaError | null {
         message:
           'Database tables are missing. Run prisma migrate deploy against this database.',
       };
-    case 'P2022':
+    case 'P2022': {
+      const meta =
+        'meta' in error && error.meta && typeof error.meta === 'object'
+          ? (error.meta as Record<string, unknown>)
+          : {};
+      const column =
+        typeof meta.column === 'string'
+          ? meta.column
+          : typeof meta.field_name === 'string'
+            ? meta.field_name
+            : null;
       return {
         status: HttpStatus.SERVICE_UNAVAILABLE,
         code: ErrorCode.DATABASE_ERROR,
-        message:
-          'Database column is missing. Run pending Prisma migrations against this database.',
+        message: column
+          ? `Database column is missing (${column}). Run pending Prisma migrations against this database.`
+          : 'Database column is missing. Run pending Prisma migrations against this database.',
       };
+    }
     default:
       if (code.startsWith('P')) {
         return {

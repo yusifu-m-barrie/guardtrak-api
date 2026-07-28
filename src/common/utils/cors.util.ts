@@ -9,6 +9,6 @@ export function parseCorsOrigins(raw: string | undefined | null): string[] {
 
   return raw
     .split(',')
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter((origin) => origin.length > 0);
 }

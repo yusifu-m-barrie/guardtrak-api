@@ -131,11 +131,16 @@ CORS_ORIGINS=https://your-dashboard.vercel.app,https://app.yourdomain.com
 WS_CORS_ORIGINS=https://your-dashboard.vercel.app,https://app.yourdomain.com
 ```
 
-Then set the dashboard’s `NEXT_PUBLIC_API_URL` (or backend proxy target) to:
+Then set the dashboard’s `NEXT_PUBLIC_API_URL` to:
 
 ```text
 https://YOUR-API-DOMAIN/api/v1
 ```
+
+Dashboard hosting steps (recommended): `guardtrak-dashboard/docs/vercel-deployment.md`  
+(Railway dashboard is optional if you have spare service slots: `docs/railway-deployment.md`.)
+
+After the dashboard has a public URL, set `CORS_ORIGINS` / `WS_CORS_ORIGINS` on the API to that origin and redeploy/restart the API.
 
 ## 6) First deploy checklist
 
