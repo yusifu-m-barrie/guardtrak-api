@@ -31,6 +31,8 @@ export interface AuthConfig {
   resetTokenExpiresMinutes: number;
   allowDevOtpOutput: boolean;
   newDeviceAutoApprove: boolean;
+  /** Auto-activate dashboard browsers (WEB). Defaults to true. */
+  webDeviceAutoApprove: boolean;
   /** When true, reject login if installationId belongs to another user. */
   enforceDeviceOwnership: boolean;
   passwordHistoryCount: number;

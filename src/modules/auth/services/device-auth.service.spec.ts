@@ -29,8 +29,44 @@ describe('DeviceAuthService', () => {
     );
   });
 
+  it('auto-approves WEB devices even when AUTH_NEW_DEVICE_AUTO_APPROVE is false', async () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'auth.newDeviceAutoApprove') return false;
+      if (key === 'auth.webDeviceAutoApprove') return true;
+      return undefined;
+    });
+    prisma.device.findUnique.mockResolvedValue(null);
+    prisma.device.create.mockResolvedValue({
+      id: 'device-web',
+      organisationId: 'org-1',
+      userId: 'user-1',
+      installationId: 'web-install-1',
+      platform: DevicePlatform.WEB,
+      status: DeviceStatus.ACTIVE,
+      trustedAt: new Date(),
+      trustScore: 60,
+    });
+
+    const device = await service.upsertForLogin({
+      organisationId: 'org-1',
+      userId: 'user-1',
+      installationId: 'web-install-1',
+      platform: DevicePlatform.WEB,
+    });
+
+    expect(device.status).toBe(DeviceStatus.ACTIVE);
+    const createArg = prisma.device.create.mock.calls[0][0] as {
+      data: { status: DeviceStatus };
+    };
+    expect(createArg.data.status).toBe(DeviceStatus.ACTIVE);
+  });
+
   it('creates PENDING devices when AUTH_NEW_DEVICE_AUTO_APPROVE is false', async () => {
-    configService.get.mockReturnValue(false);
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'auth.newDeviceAutoApprove') return false;
+      if (key === 'auth.webDeviceAutoApprove') return true;
+      return undefined;
+    });
     prisma.device.findUnique.mockResolvedValue(null);
     prisma.device.create.mockResolvedValue({
       id: 'device-1',

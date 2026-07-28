@@ -102,7 +102,8 @@ Open `docs/railway.env.example` and paste into Railway Variables.
 | `JWT_REFRESH_SECRET` | Different random value |
 | `TRUST_PROXY` | `true` (required behind Railway) |
 | `AUTH_ALLOW_DEV_OTP_OUTPUT` | `false` |
-| `AUTH_NEW_DEVICE_AUTO_APPROVE` | `false` |
+| `AUTH_NEW_DEVICE_AUTO_APPROVE` | `false` (mobile still needs approval) |
+| `AUTH_WEB_DEVICE_AUTO_APPROVE` | `true` (dashboard browsers auto-activate; avoids first-admin lockout) |
 | `CORS_ORIGINS` | Your live dashboard URL(s), comma-separated |
 | `WS_CORS_ORIGINS` | Same as CORS (or matching WS origins) |
 | `STORAGE_PROVIDER` | `local` for first demo |

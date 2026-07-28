@@ -63,12 +63,12 @@ export class DeviceAuthService {
 
       const nextStatus =
         existing.status === DeviceStatus.PENDING
-          ? this.autoApprove()
+          ? this.autoApprove(input.platform)
             ? DeviceStatus.ACTIVE
             : DeviceStatus.PENDING
           : existing.status === DeviceStatus.ACTIVE
             ? DeviceStatus.ACTIVE
-            : this.autoApprove()
+            : this.autoApprove(input.platform)
               ? DeviceStatus.ACTIVE
               : existing.status;
       const activeLogin = nextStatus === DeviceStatus.ACTIVE;
@@ -104,7 +104,7 @@ export class DeviceAuthService {
       });
     }
 
-    const status = this.autoApprove()
+    const status = this.autoApprove(input.platform)
       ? DeviceStatus.ACTIVE
       : DeviceStatus.PENDING;
 
@@ -128,7 +128,22 @@ export class DeviceAuthService {
     });
   }
 
-  private autoApprove(): boolean {
+  /**
+   * Mobile devices stay pending in production until an admin approves them.
+   * WEB (dashboard browser) auto-approves by default so the first administrator
+   * is not locked out before they can open Devices.
+   */
+  private autoApprove(platform: DevicePlatform): boolean {
+    if (platform === DevicePlatform.WEB) {
+      const webConfigured = this.configService.get<boolean>(
+        'auth.webDeviceAutoApprove',
+      );
+      if (webConfigured !== undefined) {
+        return webConfigured;
+      }
+      return true;
+    }
+
     const configured = this.configService.get<boolean>(
       'auth.newDeviceAutoApprove',
     );

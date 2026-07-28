@@ -74,6 +74,11 @@ export default (): GuardTrakConfig => {
         process.env.AUTH_NEW_DEVICE_AUTO_APPROVE,
         nodeEnv === 'development' || nodeEnv === 'test',
       ),
+      // Dashboard browsers should not lock out the first admin.
+      webDeviceAutoApprove: parseBoolean(
+        process.env.AUTH_WEB_DEVICE_AUTO_APPROVE,
+        true,
+      ),
       // Strict 1-installation → 1-account binding (production/staging only by default).
       enforceDeviceOwnership: parseBoolean(
         process.env.AUTH_ENFORCE_DEVICE_OWNERSHIP,
