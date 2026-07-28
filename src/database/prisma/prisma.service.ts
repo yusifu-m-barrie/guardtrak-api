@@ -13,6 +13,32 @@ function isDirectPostgresUrl(url: string): boolean {
   return url.startsWith('postgresql://') || url.startsWith('postgres://');
 }
 
+/** Ensure Prisma gets an explicit schema for Railway/managed Postgres URLs. */
+function withPublicSchema(url: string): string {
+  if (!url || /[?&]schema=/.test(url)) {
+    return url;
+  }
+  return url.includes('?') ? `${url}&schema=public` : `${url}?schema=public`;
+}
+
+/**
+ * Railway public proxy hosts require TLS. Private `*.railway.internal` URLs do not.
+ */
+function resolvePoolSsl(
+  url: string,
+): { rejectUnauthorized: boolean } | undefined {
+  if (/sslmode=disable/i.test(url)) {
+    return undefined;
+  }
+  if (/sslmode=require/i.test(url)) {
+    return { rejectUnauthorized: false };
+  }
+  if (/railway\.app|rlwy\.net|proxy\.rlwy\.net/i.test(url)) {
+    return { rejectUnauthorized: false };
+  }
+  return undefined;
+}
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -33,12 +59,13 @@ export class PrismaService
     const directPostgres = isDirectPostgresUrl(connectionString);
     // PrismaPg requires a direct TCP URL. prisma+postgres:// is CLI/Accelerate only.
     const adapterUrl = directPostgres
-      ? connectionString
+      ? withPublicSchema(connectionString)
       : 'postgresql://127.0.0.1:1/guardtrak_unconfigured';
 
     const pool = new Pool({
       connectionString: adapterUrl,
-      connectionTimeoutMillis: 5_000,
+      ssl: resolvePoolSsl(adapterUrl),
+      connectionTimeoutMillis: 10_000,
       idleTimeoutMillis: 30_000,
       max: 10,
     });
