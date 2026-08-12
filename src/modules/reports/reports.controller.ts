@@ -30,7 +30,7 @@ export class ReportsController {
   @Permissions('report:read')
   @ApiOperation({
     summary:
-      'Attendance work-hours reports (clock-out − clock-in − breaks) with filters, pagination, and report views',
+      'Payroll/attendance hours reports with filters (payable or gross), approved-only mode, and export-ready views',
   })
   attendanceHours(
     @CurrentUser() user: RequestUser,
