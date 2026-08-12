@@ -19,7 +19,12 @@ describe('role permissions', () => {
     expect(permissions).toContain('assignment:create');
     expect(permissions).toContain('patrol-assignment:create');
     expect(permissions).toContain('patrol-route:read');
+    expect(permissions).toContain('site:read');
+    expect(permissions).toContain('shift:read');
     expect(permissions).not.toContain('supervisor:assign-officer');
     expect(permissions).not.toContain('shift:create');
+    expect(permissions).not.toContain('client:read');
+    expect(permissions).not.toContain('supervisor:read');
+    expect(permissions).not.toContain('organisation:update:self');
   });
 });

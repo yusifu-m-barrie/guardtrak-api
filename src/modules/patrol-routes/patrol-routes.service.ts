@@ -26,6 +26,7 @@ import {
 } from '../../common/utils/normalize.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
+import { AssignmentAccessService } from '../assignments/assignment-access.service';
 import type { ServiceRequestContext } from '../clients/clients.types';
 import {
   ACTIVE_PATROL_ASSIGNMENT_STATUSES,
@@ -84,6 +85,7 @@ export class PatrolRoutesService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuthAuditService,
     private readonly configService: ConfigService,
+    private readonly assignmentAccess: AssignmentAccessService,
   ) {}
 
   async create(
@@ -147,12 +149,19 @@ export class PatrolRoutesService {
 
   async findAll(user: RequestUser, query: ListPatrolRoutesQueryDto) {
     const organisationId = requireOrganisationId(user);
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
     const sortBy = assertAllowedSortField(query.sortBy, ROUTE_SORT, 'name');
     const sortOrder = query.sortOrder ?? 'asc';
 
     const where: Prisma.PatrolRouteWhereInput = {
       organisationId,
+      ...(scope
+        ? { siteId: this.assignmentAccess.emptySafeInFilter(scope.siteIds) }
+        : {}),
       ...(query.includeArchived
         ? {}
         : {
@@ -207,8 +216,19 @@ export class PatrolRoutesService {
 
   async findOne(user: RequestUser, id: string) {
     const organisationId = requireOrganisationId(user);
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
     const route = await this.prisma.patrolRoute.findFirst({
-      where: { id, organisationId, deletedAt: null },
+      where: {
+        id,
+        organisationId,
+        deletedAt: null,
+        ...(scope
+          ? { siteId: this.assignmentAccess.emptySafeInFilter(scope.siteIds) }
+          : {}),
+      },
       include: ROUTE_INCLUDE,
     });
     if (!route) {

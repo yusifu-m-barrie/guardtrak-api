@@ -9,6 +9,14 @@ import {
 } from '../../common/tenant/tenant.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 
+/** Operational scope for supervisors. `null` means unrestricted (admin). */
+export interface SupervisorOperationalScope {
+  supervisorProfileId: string;
+  officerIds: string[];
+  siteIds: string[];
+  clientIds: string[];
+}
+
 @Injectable()
 export class AssignmentAccessService {
   constructor(private readonly prisma: PrismaService) {}
@@ -56,6 +64,98 @@ export class AssignmentAccessService {
       select: { officerId: true },
     });
     return links.map((link) => link.officerId);
+  }
+
+  /**
+   * Admins see everything in the org. Supervisors only see officers on their
+   * team plus sites/clients reached via those officers' (or their own) shifts.
+   */
+  async resolveSupervisorOperationalScope(
+    user: RequestUser,
+    organisationId: string,
+  ): Promise<SupervisorOperationalScope | null> {
+    if (user.role !== AppUserRole.SUPERVISOR) {
+      return null;
+    }
+
+    const supervisorProfileId = await this.resolveSupervisorProfileId(
+      user,
+      organisationId,
+    );
+    if (!supervisorProfileId) {
+      return {
+        supervisorProfileId: '',
+        officerIds: [],
+        siteIds: [],
+        clientIds: [],
+      };
+    }
+
+    const officerIds = await this.listAssignedOfficerIds(
+      organisationId,
+      supervisorProfileId,
+    );
+
+    const assignmentOr =
+      officerIds.length > 0
+        ? [
+            { supervisorId: supervisorProfileId },
+            { officerId: { in: officerIds } },
+          ]
+        : [{ supervisorId: supervisorProfileId }];
+
+    const shifts = await this.prisma.shift.findMany({
+      where: {
+        organisationId,
+        deletedAt: null,
+        assignments: { some: { OR: assignmentOr } },
+      },
+      select: {
+        siteId: true,
+        site: { select: { clientId: true } },
+      },
+      distinct: ['siteId'],
+    });
+
+    const patrols =
+      officerIds.length > 0
+        ? await this.prisma.patrolAssignment.findMany({
+            where: {
+              organisationId,
+              officerId: { in: officerIds },
+            },
+            select: {
+              siteId: true,
+              site: { select: { clientId: true } },
+            },
+            distinct: ['siteId'],
+          })
+        : [];
+
+    const siteIds = [
+      ...new Set([
+        ...shifts.map((shift) => shift.siteId),
+        ...patrols.map((patrol) => patrol.siteId),
+      ]),
+    ];
+    const clientIds = [
+      ...new Set([
+        ...shifts.map((shift) => shift.site.clientId),
+        ...patrols.map((patrol) => patrol.site.clientId),
+      ].filter(Boolean)),
+    ];
+
+    return {
+      supervisorProfileId,
+      officerIds,
+      siteIds,
+      clientIds,
+    };
+  }
+
+  /** Prisma `id: { in: ids }` filter; empty list never matches. */
+  emptySafeInFilter(ids: string[]): { in: string[] } {
+    return { in: ids.length > 0 ? ids : ['__none__'] };
   }
 
   /**

@@ -35,7 +35,18 @@ describe('ClientsService', () => {
     record: jest.fn(),
   };
 
-  const service = new ClientsService(prisma as never, auditService as never);
+  const assignmentAccess = {
+    resolveSupervisorOperationalScope: jest.fn().mockResolvedValue(null),
+    emptySafeInFilter: (ids: string[]) => ({
+      in: ids.length > 0 ? ids : ['__none__'],
+    }),
+  };
+
+  const service = new ClientsService(
+    prisma as never,
+    auditService as never,
+    assignmentAccess as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();

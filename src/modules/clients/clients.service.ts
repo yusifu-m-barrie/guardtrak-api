@@ -12,6 +12,7 @@ import type { RequestUser } from '../../common/types/request-user.type';
 import {
   assertSameOrganisation,
   requireOrganisationId,
+  tenantNotFound,
 } from '../../common/tenant/tenant.util';
 import {
   assertAllowedSortField,
@@ -25,6 +26,7 @@ import {
 } from '../../common/utils/normalize.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
+import { AssignmentAccessService } from '../assignments/assignment-access.service';
 import type { CreateClientDto } from './dto/create-client.dto';
 import type { ListClientsQueryDto } from './dto/list-clients-query.dto';
 import type { UpdateClientDto } from './dto/update-client.dto';
@@ -45,6 +47,7 @@ export class ClientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuthAuditService,
+    private readonly assignmentAccess: AssignmentAccessService,
   ) {}
 
   async create(
@@ -101,6 +104,10 @@ export class ClientsService {
 
   async findAll(user: RequestUser, query: ListClientsQueryDto) {
     const organisationId = requireOrganisationId(user);
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
     const sortBy = assertAllowedSortField(
       query.sortBy,
@@ -111,6 +118,9 @@ export class ClientsService {
 
     const where: Prisma.ClientWhereInput = {
       organisationId,
+      ...(scope
+        ? { id: this.assignmentAccess.emptySafeInFilter(scope.clientIds) }
+        : {}),
       ...(query.includeArchived
         ? {}
         : { deletedAt: null, status: { not: ClientStatus.ARCHIVED } }),
@@ -168,12 +178,22 @@ export class ClientsService {
   async findOne(user: RequestUser, id: string) {
     const organisationId = requireOrganisationId(user);
     const client = await this.findClientOrThrow(organisationId, id);
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
+    if (scope && !scope.clientIds.includes(client.id)) {
+      tenantNotFound(ErrorCode.CLIENT_NOT_FOUND);
+    }
     const siteCount = await this.prisma.securitySite.count({
       where: {
         clientId: client.id,
         organisationId,
         deletedAt: null,
         status: { not: SiteStatus.ARCHIVED },
+        ...(scope
+          ? { id: this.assignmentAccess.emptySafeInFilter(scope.siteIds) }
+          : {}),
       },
     });
 

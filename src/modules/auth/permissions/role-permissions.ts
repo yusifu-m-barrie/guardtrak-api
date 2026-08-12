@@ -41,8 +41,7 @@ const SUPERVISOR_PERMISSIONS: AuthPermission[] = [
   ...OFFICER_PERMISSIONS,
   'officer:read',
   'officer:read:assigned',
-  'supervisor:read',
-  'client:read',
+  // No org-wide client/supervisor directory — scoped via team links in services.
   'site:read',
   'shift:read',
   'assignment:read',

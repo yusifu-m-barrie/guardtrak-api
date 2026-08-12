@@ -13,6 +13,7 @@ import {
   assertPermission,
   assertSameOrganisation,
   requireOrganisationId,
+  tenantNotFound,
 } from '../../common/tenant/tenant.util';
 import {
   assertAllowedSortField,
@@ -26,6 +27,7 @@ import {
 } from '../../common/utils/normalize.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
+import { AssignmentAccessService } from '../assignments/assignment-access.service';
 import type { ServiceRequestContext } from '../clients/clients.types';
 import type { CreateSiteDto } from './dto/create-site.dto';
 import type { ListSitesQueryDto } from './dto/list-sites-query.dto';
@@ -41,6 +43,7 @@ export class SitesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuthAuditService,
+    private readonly assignmentAccess: AssignmentAccessService,
   ) {}
 
   async create(
@@ -110,6 +113,10 @@ export class SitesService {
 
   async findAll(user: RequestUser, query: ListSitesQueryDto) {
     const organisationId = requireOrganisationId(user);
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
     const sortBy = assertAllowedSortField(
       query.sortBy,
@@ -120,6 +127,9 @@ export class SitesService {
 
     const where: Prisma.SecuritySiteWhereInput = {
       organisationId,
+      ...(scope
+        ? { id: this.assignmentAccess.emptySafeInFilter(scope.siteIds) }
+        : {}),
       ...(query.includeArchived
         ? {}
         : { deletedAt: null, status: { not: SiteStatus.ARCHIVED } }),
@@ -166,6 +176,13 @@ export class SitesService {
   async findOne(user: RequestUser, id: string) {
     const organisationId = requireOrganisationId(user);
     const site = await this.findSiteOrThrow(organisationId, id);
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
+    if (scope && !scope.siteIds.includes(site.id)) {
+      tenantNotFound(ErrorCode.SITE_NOT_FOUND);
+    }
     return toSiteResponse(site);
   }
 

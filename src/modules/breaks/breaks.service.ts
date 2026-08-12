@@ -236,6 +236,18 @@ export class BreaksService {
           }
         : {}),
     };
+
+    const scope = await this.accessService.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
+    if (scope) {
+      where.officerId = this.accessService.emptySafeInFilter(
+        query.officerId && scope.officerIds.includes(query.officerId)
+          ? [query.officerId]
+          : scope.officerIds,
+      );
+    }
     const [items, total] = await Promise.all([
       this.prisma.shiftBreak.findMany({
         where,

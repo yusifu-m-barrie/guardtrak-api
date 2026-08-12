@@ -134,6 +134,11 @@ export class ShiftsService {
       );
     }
 
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
+
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
     const sortBy = assertAllowedSortField(
       query.sortBy,
@@ -142,8 +147,48 @@ export class ShiftsService {
     );
     const sortOrder = query.sortOrder ?? 'asc';
 
+    const supervisorAssignmentFilter: Prisma.ShiftWhereInput = scope
+      ? {
+          assignments: {
+            some: {
+              AND: [
+                {
+                  OR: [
+                    { supervisorId: scope.supervisorProfileId || '__none__' },
+                    ...(scope.officerIds.length > 0
+                      ? [{ officerId: { in: scope.officerIds } }]
+                      : []),
+                  ],
+                },
+                ...(query.officerId
+                  ? [
+                      {
+                        officerId: scope.officerIds.includes(query.officerId)
+                          ? query.officerId
+                          : '__none__',
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          },
+        }
+      : query.officerId || query.supervisorId
+        ? {
+            assignments: {
+              some: {
+                ...(query.officerId ? { officerId: query.officerId } : {}),
+                ...(query.supervisorId
+                  ? { supervisorId: query.supervisorId }
+                  : {}),
+              },
+            },
+          }
+        : {};
+
     const where: Prisma.ShiftWhereInput = {
       organisationId,
+      ...supervisorAssignmentFilter,
       ...(query.includeArchived
         ? {}
         : {
@@ -166,18 +211,6 @@ export class ShiftsService {
               ...(query.scheduledTo
                 ? { lte: new Date(query.scheduledTo) }
                 : {}),
-            },
-          }
-        : {}),
-      ...(query.officerId || query.supervisorId
-        ? {
-            assignments: {
-              some: {
-                ...(query.officerId ? { officerId: query.officerId } : {}),
-                ...(query.supervisorId
-                  ? { supervisorId: query.supervisorId }
-                  : {}),
-              },
             },
           }
         : {}),
@@ -217,6 +250,10 @@ export class ShiftsService {
     const organisationId = requireOrganisationId(user);
     const canReadOrg = userHasPermission(user, 'shift:read');
     const canReadSelf = userHasPermission(user, 'shift:read:self');
+    const scope = await this.assignmentAccess.resolveSupervisorOperationalScope(
+      user,
+      organisationId,
+    );
 
     if (!canReadOrg && !canReadSelf) {
       throw new AppException(
@@ -227,7 +264,25 @@ export class ShiftsService {
     }
 
     const shift = await this.prisma.shift.findFirst({
-      where: { id, organisationId, deletedAt: null },
+      where: {
+        id,
+        organisationId,
+        deletedAt: null,
+        ...(scope
+          ? {
+              assignments: {
+                some: {
+                  OR: [
+                    { supervisorId: scope.supervisorProfileId || '__none__' },
+                    ...(scope.officerIds.length > 0
+                      ? [{ officerId: { in: scope.officerIds } }]
+                      : []),
+                  ],
+                },
+              },
+            }
+          : {}),
+      },
       include: {
         ...SHIFT_INCLUDE,
         assignments: {
@@ -249,7 +304,7 @@ export class ShiftsService {
       tenantNotFound(ErrorCode.SHIFT_NOT_FOUND);
     }
 
-    if (!canReadOrg && canReadSelf) {
+    if (!scope && !canReadOrg && canReadSelf) {
       const officer = await this.prisma.officerProfile.findFirst({
         where: { userId: user.id, organisationId, deletedAt: null },
         select: { id: true },

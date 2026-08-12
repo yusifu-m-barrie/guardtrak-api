@@ -217,6 +217,26 @@ export class PatrolVisitsService {
         : {}),
     };
 
+    if (user.role === 'SUPERVISOR') {
+      const supervisorId = await this.accessService.resolveSupervisorProfileId(
+        user,
+        organisationId,
+      );
+      const officerIds = supervisorId
+        ? await this.accessService.listAssignedOfficerIds(
+            organisationId,
+            supervisorId,
+          )
+        : [];
+      const allowed =
+        query.officerId && officerIds.includes(query.officerId)
+          ? [query.officerId]
+          : officerIds;
+      where.officerId = {
+        in: allowed.length > 0 ? allowed : ['__none__'],
+      };
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.patrolVisit.findMany({
         where,

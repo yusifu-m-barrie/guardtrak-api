@@ -165,6 +165,9 @@ export class SupervisorsService {
     const where: Prisma.SupervisorProfileWhereInput = {
       organisationId,
       ...(query.includeArchived ? {} : { deletedAt: null }),
+      ...(actor.role === AppUserRole.SUPERVISOR
+        ? { userId: actor.id }
+        : {}),
     };
 
     if (query.createdFrom || query.createdTo) {
