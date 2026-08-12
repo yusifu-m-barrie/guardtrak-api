@@ -31,6 +31,7 @@ import {
 } from '../../common/utils/normalize.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
+import { SCOPE_NIL_UUID } from '../assignments/assignment-access.service';
 import { PasswordService } from '../auth/services/password.service';
 import { SessionService } from '../auth/services/session.service';
 import { LocalStorageProvider } from '../storage/local-storage.provider';
@@ -721,7 +722,7 @@ export class OfficersService {
       });
 
       if (!supervisorProfile) {
-        where.id = { in: [] };
+        where.id = { in: [SCOPE_NIL_UUID] };
       } else {
         where.supervisorLinks = {
           some: {

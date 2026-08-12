@@ -41,7 +41,9 @@ const SUPERVISOR_PERMISSIONS: AuthPermission[] = [
   ...OFFICER_PERMISSIONS,
   'officer:read',
   'officer:read:assigned',
-  // No org-wide client/supervisor directory — scoped via team links in services.
+  // Self profile / My Team (list endpoint is also forced to self).
+  'supervisor:read',
+  // No org-wide client directory — clients are scoped via team links when needed.
   'site:read',
   'shift:read',
   'assignment:read',

@@ -154,6 +154,14 @@ export class PatrolRoutesService {
       organisationId,
     );
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
+
+    if (scope && scope.siteIds.length === 0) {
+      return {
+        data: [],
+        meta: buildPaginationMeta(page, limit, 0),
+      };
+    }
+
     const sortBy = assertAllowedSortField(query.sortBy, ROUTE_SORT, 'name');
     const sortOrder = query.sortOrder ?? 'asc';
 

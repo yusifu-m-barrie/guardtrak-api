@@ -24,7 +24,7 @@ describe('role permissions', () => {
     expect(permissions).not.toContain('supervisor:assign-officer');
     expect(permissions).not.toContain('shift:create');
     expect(permissions).not.toContain('client:read');
-    expect(permissions).not.toContain('supervisor:read');
+    expect(permissions).toContain('supervisor:read');
     expect(permissions).not.toContain('organisation:update:self');
   });
 });

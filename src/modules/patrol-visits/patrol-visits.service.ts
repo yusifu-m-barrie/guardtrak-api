@@ -27,6 +27,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
 import type { ServiceRequestContext } from '../clients/clients.types';
 import { GeofenceService } from '../attendance/geofence.service';
+import { SCOPE_NIL_UUID } from '../assignments/assignment-access.service';
 import { PatrolAccessService } from '../patrols/patrol-access.service';
 import { PatrolProgressService } from '../patrols/patrol-progress.service';
 import { verifyQrCode } from '../patrols/patrol-qr.util';
@@ -233,7 +234,7 @@ export class PatrolVisitsService {
           ? [query.officerId]
           : officerIds;
       where.officerId = {
-        in: allowed.length > 0 ? allowed : ['__none__'],
+        in: allowed.length > 0 ? allowed : [SCOPE_NIL_UUID],
       };
     }
 

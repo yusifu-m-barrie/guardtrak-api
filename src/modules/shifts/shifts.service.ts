@@ -24,7 +24,10 @@ import { trimOrUndefined } from '../../common/utils/normalize.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuthAuditService } from '../auth/services/auth-audit.service';
 import type { ServiceRequestContext } from '../clients/clients.types';
-import { AssignmentAccessService } from '../assignments/assignment-access.service';
+import {
+  AssignmentAccessService,
+  SCOPE_NIL_UUID,
+} from '../assignments/assignment-access.service';
 import { ACTIVE_ASSIGNMENT_STATUSES } from '../assignments/assignment-transitions.util';
 import { rangesOverlap } from '../assignments/assignment-overlap.util';
 import { toAssignmentResponse } from '../assignments/mappers/assignment.mapper';
@@ -154,7 +157,7 @@ export class ShiftsService {
               AND: [
                 {
                   OR: [
-                    { supervisorId: scope.supervisorProfileId || '__none__' },
+                    { supervisorId: scope.supervisorProfileId || SCOPE_NIL_UUID },
                     ...(scope.officerIds.length > 0
                       ? [{ officerId: { in: scope.officerIds } }]
                       : []),
@@ -165,7 +168,7 @@ export class ShiftsService {
                       {
                         officerId: scope.officerIds.includes(query.officerId)
                           ? query.officerId
-                          : '__none__',
+                          : SCOPE_NIL_UUID,
                       },
                     ]
                   : []),
@@ -273,7 +276,7 @@ export class ShiftsService {
               assignments: {
                 some: {
                   OR: [
-                    { supervisorId: scope.supervisorProfileId || '__none__' },
+                    { supervisorId: scope.supervisorProfileId || SCOPE_NIL_UUID },
                     ...(scope.officerIds.length > 0
                       ? [{ officerId: { in: scope.officerIds } }]
                       : []),

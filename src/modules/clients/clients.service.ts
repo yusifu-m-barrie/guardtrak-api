@@ -109,6 +109,14 @@ export class ClientsService {
       organisationId,
     );
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
+
+    if (scope && scope.clientIds.length === 0) {
+      return {
+        data: [],
+        meta: buildPaginationMeta(page, limit, 0),
+      };
+    }
+
     const sortBy = assertAllowedSortField(
       query.sortBy,
       CLIENT_SORT_FIELDS,

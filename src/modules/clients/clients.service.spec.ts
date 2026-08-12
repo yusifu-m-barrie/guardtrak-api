@@ -38,7 +38,7 @@ describe('ClientsService', () => {
   const assignmentAccess = {
     resolveSupervisorOperationalScope: jest.fn().mockResolvedValue(null),
     emptySafeInFilter: (ids: string[]) => ({
-      in: ids.length > 0 ? ids : ['__none__'],
+      in: ids.length > 0 ? ids : ['00000000-0000-0000-0000-000000000000'],
     }),
   };
 

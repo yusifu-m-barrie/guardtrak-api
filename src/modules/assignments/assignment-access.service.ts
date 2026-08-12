@@ -9,6 +9,9 @@ import {
 } from '../../common/tenant/tenant.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 
+/** Never matches a real row; safe for Postgres UUID `IN (...)` filters. */
+export const SCOPE_NIL_UUID = '00000000-0000-0000-0000-000000000000';
+
 /** Operational scope for supervisors. `null` means unrestricted (admin). */
 export interface SupervisorOperationalScope {
   supervisorProfileId: string;
@@ -153,9 +156,9 @@ export class AssignmentAccessService {
     };
   }
 
-  /** Prisma `id: { in: ids }` filter; empty list never matches. */
+  /** Prisma `id: { in: ids }` filter; empty list never matches (valid UUID). */
   emptySafeInFilter(ids: string[]): { in: string[] } {
-    return { in: ids.length > 0 ? ids : ['__none__'] };
+    return { in: ids.length > 0 ? ids : [SCOPE_NIL_UUID] };
   }
 
   /**
