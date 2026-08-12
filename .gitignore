@@ -42,6 +42,10 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Database dumps (may contain PII / credentials hashes)
+/backups/
+*.dump
+
 # temp directory
 .temp
 .tmp

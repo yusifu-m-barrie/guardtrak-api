@@ -22,19 +22,41 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 
+function ConvertTo-LibpqUrl {
+  param([string]$Url)
+  # pg_dump/psql reject Prisma-only query params such as schema=
+  $base, $query = $Url.Split('?', 2)
+  if (-not $query) { return $Url }
+  $kept = @()
+  foreach ($part in $query.Split('&')) {
+    if (-not $part) { continue }
+    $key = ($part.Split('='))[0].ToLowerInvariant()
+    if ($key -eq 'schema') { continue }
+    $kept += $part
+  }
+  if ($kept.Count -eq 0) { return $base }
+  return "$base`?$($kept -join '&')"
+}
+
 function Get-DatabaseUrl {
   param([string]$Override)
-  if ($Override) { return $Override }
-  if ($env:DATABASE_URL) { return $env:DATABASE_URL }
-  $EnvFile = Join-Path $ProjectRoot ".env"
-  if (Test-Path $EnvFile) {
-    Get-Content $EnvFile | ForEach-Object {
-      if ($_ -match '^\s*DATABASE_URL\s*=\s*(.+)\s*$') {
-        return $Matches[1].Trim().Trim('"').Trim("'")
+  $raw = $Override
+  if (-not $raw -and $env:DATABASE_URL) { $raw = $env:DATABASE_URL }
+  if (-not $raw) {
+    $EnvFile = Join-Path $ProjectRoot ".env"
+    if (Test-Path $EnvFile) {
+      foreach ($line in Get-Content $EnvFile) {
+        if ($line -match '^\s*DATABASE_URL\s*=\s*(.+)\s*$') {
+          $raw = $Matches[1].Trim().Trim('"').Trim("'")
+          break
+        }
       }
     }
   }
-  throw "DATABASE_URL not set. Export it or add to .env"
+  if (-not $raw) {
+    throw "DATABASE_URL not set. Export it or add to .env"
+  }
+  return ConvertTo-LibpqUrl $raw
 }
 
 if (-not (Test-Path $DumpPath)) {
