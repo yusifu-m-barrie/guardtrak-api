@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, Length, MaxLength } from 'class-validator';
 
 export class VerifyOtpDto {
-  @ApiProperty({ example: 'GUARDTRAK' })
+  @ApiProperty({ example: 'FOLPS' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(64)

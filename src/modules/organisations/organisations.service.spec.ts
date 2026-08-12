@@ -23,8 +23,8 @@ describe('OrganisationsService', () => {
 
   const organisation = {
     id: organisationId,
-    code: 'GUARDTRAK',
-    name: 'GuardTrak',
+    code: 'FOLPS',
+    name: 'FOLPS',
     legalName: null,
     registrationNumber: null,
     email: null,

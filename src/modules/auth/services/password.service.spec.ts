@@ -7,9 +7,9 @@ describe('PasswordService', () => {
   it(
     'hashes and verifies passwords with argon2',
     async () => {
-      const hash = await service.hash('GuardTrak!Dev2026');
+      const hash = await service.hash('FOLPS!Dev2026');
       expect(hash.startsWith('$argon2')).toBe(true);
-      expect(await service.verify(hash, 'GuardTrak!Dev2026')).toBe(true);
+      expect(await service.verify(hash, 'FOLPS!Dev2026')).toBe(true);
       expect(await service.verify(hash, 'wrong-password')).toBe(false);
     },
     30_000,

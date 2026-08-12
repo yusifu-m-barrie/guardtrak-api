@@ -12,7 +12,7 @@ import { RequestIdMiddleware } from '../src/common/middleware/request-id.middlew
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { asErrorBody, asSuccessBody } from './http-body';
 
-const PASSWORD = 'GuardTrak!Dev2026';
+const PASSWORD = 'FOLPS!Dev2026';
 const SITE_A = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 describe('Phase 7 Operations (e2e)', () => {
@@ -170,7 +170,7 @@ describe('Phase 7 Operations (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId,
         password: PASSWORD,
         installationId,

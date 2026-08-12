@@ -55,7 +55,7 @@ Then set the API **Start Command** (or use `railway.toml` / Dockerfile) to:
 npx prisma migrate deploy && node dist/src/main.js
 ```
 
-Seed creates org `GUARDTRAK` and users like `OFF-001` / `GuardTrak!Dev2026`.
+Seed creates org `GUARDTRAK` and users like `OFF-001` / `FOLPS!Dev2026`.
 
 ---
 

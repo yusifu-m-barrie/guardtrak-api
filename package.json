@@ -24,6 +24,7 @@
     "prisma:validate": "prisma validate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
+    "rebrand:folps": "node --import tsx scripts/rebrand-to-folps.ts",
     "prisma:seed": "node --import tsx prisma/seed.ts",
     "prisma:studio": "prisma studio"
   },

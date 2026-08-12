@@ -104,7 +104,7 @@ export const DEFAULT_ORGANISATION_SETTINGS: OrganisationSettingsPayload = {
     slaResponseHours: 48,
   },
   email: {
-    fromName: 'GuardTrak',
+    fromName: 'FOLPS',
     fromEmail: '',
     replyTo: '',
   },

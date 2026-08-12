@@ -12,7 +12,7 @@ import type { PaginationMeta } from '../src/common/types/api-response.type';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { asErrorBody, asSuccessBody } from './http-body';
 
-const PASSWORD = 'GuardTrak!Dev2026';
+const PASSWORD = 'FOLPS!Dev2026';
 const TEMP_PASSWORD = 'Strong!Temporary2026';
 const OFFICER1_PROFILE_ID = '77777777-7777-4777-8777-777777777777';
 const OFFICER2_PROFILE_ID = '88888888-8888-4888-8888-888888888888';
@@ -77,7 +77,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
   afterAll(async () => {
     if (originalOrgName) {
       await prisma.organisation.updateMany({
-        where: { code: 'GUARDTRAK' },
+        where: { code: 'FOLPS' },
         data: { name: originalOrgName },
       });
     }
@@ -146,7 +146,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId,
         password: PASSWORD,
         installationId,
@@ -203,7 +203,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
     const orgBody = asSuccessBody<{ code: string; deletedAt?: unknown }>(
       res.body,
     );
-    expect(orgBody.data.code).toBe('GUARDTRAK');
+    expect(orgBody.data.code).toBe('FOLPS');
     expect(orgBody.data.deletedAt).toBeUndefined();
     assertNoSensitive(orgBody);
   });
@@ -353,7 +353,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
     const userLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId,
         password: TEMP_PASSWORD,
         installationId: `p4-suspend-user-${runId}`,
@@ -437,7 +437,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
     const peerLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: `E2E-AD-${runId}`,
         password: TEMP_PASSWORD,
         installationId: `p4-last-admin-peer-${runId}`,
@@ -538,7 +538,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
     const officerLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: `E2E-O-${runId}`,
         password: TEMP_PASSWORD,
         installationId: `p4-off-me-${runId}`,
@@ -789,7 +789,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-002',
         password: PASSWORD,
         installationId: `p4-dev-block-${runId}`,
@@ -832,7 +832,7 @@ describe('Organisation management Phase 4 (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'ADM-001',
         password: PASSWORD,
         installationId: `p4-final-login-${runId}`,

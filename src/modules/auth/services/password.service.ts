@@ -80,7 +80,7 @@ export class PasswordService {
 
     if (
       process.env.NODE_ENV === 'production' &&
-      password === 'GuardTrak!Dev2026'
+      (password === 'GuardTrak!Dev2026' || password === 'FOLPS!Dev2026')
     ) {
       errors.push('This password is not allowed in production');
     }

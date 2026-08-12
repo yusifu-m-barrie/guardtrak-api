@@ -85,9 +85,9 @@ async function bootstrap(): Promise<void> {
 
   if (enableSwagger) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('GuardTrak API')
+      .setTitle('FOLPS API')
       .setDescription(
-        'REST API for the GuardTrak security workforce management platform',
+        'REST API for Faith Of Life Protective Services (FOLPS) workforce management',
       )
       .setVersion('1.0')
       .addBearerAuth()
@@ -108,7 +108,7 @@ async function bootstrap(): Promise<void> {
   // Bind all interfaces so Railway/Docker public networking can reach the process.
   await app.listen(port, '0.0.0.0');
 
-  logger.log(`GuardTrak API listening on 0.0.0.0:${port}`);
+  logger.log(`FOLPS API listening on 0.0.0.0:${port}`);
   logger.log(`Environment: ${nodeEnv}`);
   logger.log(`Global prefix: /${apiPrefix}`);
 }

@@ -11,7 +11,7 @@ import { ResponseInterceptor } from '../src/common/interceptors/response.interce
 import { RequestIdMiddleware } from '../src/common/middleware/request-id.middleware';
 import { asSuccessBody } from './http-body';
 
-const PASSWORD = 'GuardTrak!Dev2026';
+const PASSWORD = 'FOLPS!Dev2026';
 
 describe('Phase 8 Infrastructure (e2e)', () => {
   jest.setTimeout(120_000);
@@ -136,7 +136,7 @@ describe('Phase 8 Infrastructure (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-001',
         password: PASSWORD,
         installationId: `phase8-infra-${Date.now()}`,

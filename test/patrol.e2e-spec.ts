@@ -11,7 +11,7 @@ import { RequestIdMiddleware } from '../src/common/middleware/request-id.middlew
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { asErrorBody, asSuccessBody } from './http-body';
 
-const PASSWORD = 'GuardTrak!Dev2026';
+const PASSWORD = 'FOLPS!Dev2026';
 const SITE_A = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const SITE_B = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const OFFICER2_PROFILE_ID = '88888888-8888-4888-8888-888888888888';
@@ -186,7 +186,7 @@ describe('Patrol Phase 6 (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId,
         password: PASSWORD,
         installationId,

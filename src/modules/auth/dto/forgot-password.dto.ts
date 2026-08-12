@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 export class ForgotPasswordDto {
-  @ApiProperty({ example: 'GUARDTRAK' })
+  @ApiProperty({ example: 'FOLPS' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(64)

@@ -15,7 +15,7 @@ import { asErrorBody, asSuccessBody } from './http-body';
  */
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
-  const password = 'GuardTrak!Dev2026';
+  const password = 'FOLPS!Dev2026';
   const installationId = `e2e-install-${Date.now()}`;
 
   beforeAll(async () => {
@@ -65,7 +65,7 @@ describe('Auth (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-001',
         password,
         installationId,
@@ -94,7 +94,7 @@ describe('Auth (e2e)', () => {
     const login = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-001',
         password,
         installationId: `${installationId}-me`,
@@ -121,7 +121,7 @@ describe('Auth (e2e)', () => {
     const login = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-002',
         password,
         installationId: `${installationId}-refresh`,
@@ -152,7 +152,7 @@ describe('Auth (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-001',
         password: 'WrongPassword1!',
         installationId: `${installationId}-bad`,
@@ -167,7 +167,7 @@ describe('Auth (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/forgot-password')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-001',
       })
       .expect(200);
@@ -181,7 +181,7 @@ describe('Auth (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'OFF-001',
         password,
         installationId: `${installationId}-extra`,

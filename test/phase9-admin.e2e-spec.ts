@@ -9,7 +9,7 @@ import { ResponseInterceptor } from '../src/common/interceptors/response.interce
 import { RequestIdMiddleware } from '../src/common/middleware/request-id.middleware';
 import { asErrorBody, asSuccessBody } from './http-body';
 
-const PASSWORD = 'GuardTrak!Dev2026';
+const PASSWORD = 'FOLPS!Dev2026';
 
 describe('Phase 9 Admin (e2e)', () => {
   jest.setTimeout(120_000);
@@ -95,7 +95,7 @@ describe('Phase 9 Admin (e2e)', () => {
   });
 
   it('ADMINISTRATOR (ADM-001) receives 403 on GET /api/v1/admin/system', async () => {
-    const adminToken = await login('GUARDTRAK', 'ADM-001', 'tenant-admin');
+    const adminToken = await login('FOLPS', 'ADM-001', 'tenant-admin');
     if (!adminToken) {
       console.warn(
         'Skipping ADM-001 admin guard test — seed login unavailable',

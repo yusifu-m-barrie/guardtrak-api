@@ -6,7 +6,7 @@ Organisation-scoped employee IDs require an explicit tenancy code:
 
 ```json
 {
-  "organisationCode": "GUARDTRAK",
+  "organisationCode": "FOLPS",
   "employeeId": "OFF-001",
   "password": "...",
   "installationId": "...",

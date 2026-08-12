@@ -1,5 +1,6 @@
 /**
- * GuardTrak development seed — idempotent.
+ * FOLPS development seed — idempotent.
+ * Faith Of Life Protective Services.
  * Credentials below are DEVELOPMENT ONLY. Never use in production.
  */
 import 'dotenv/config';
@@ -98,7 +99,7 @@ const IDS = {
   supportRequest: 'b8888888-b888-4888-8888-b88888888888',
 } as const;
 
-const DEV_PASSWORD = 'GuardTrak!Dev2026';
+const DEV_PASSWORD = 'FOLPS!Dev2026';
 
 async function upsertUser(input: {
   id: string;
@@ -108,9 +109,13 @@ async function upsertUser(input: {
   phone: string | null;
   passwordHash: string;
   firstName: string;
+  middleName?: string | null;
   lastName: string;
   role: UserRole;
 }): Promise<void> {
+  const displayName = [input.firstName, input.middleName, input.lastName]
+    .filter(Boolean)
+    .join(' ');
   await prisma.user.upsert({
     where: { id: input.id },
     create: {
@@ -121,8 +126,9 @@ async function upsertUser(input: {
       phone: input.phone,
       passwordHash: input.passwordHash,
       firstName: input.firstName,
+      middleName: input.middleName ?? null,
       lastName: input.lastName,
-      displayName: `${input.firstName} ${input.lastName}`,
+      displayName,
       role: input.role,
       status: AccountStatus.ACTIVE,
       mustChangePassword: false,
@@ -131,8 +137,9 @@ async function upsertUser(input: {
     update: {
       email: input.email.toLowerCase(),
       firstName: input.firstName,
+      middleName: input.middleName ?? null,
       lastName: input.lastName,
-      displayName: `${input.firstName} ${input.lastName}`,
+      displayName,
       role: input.role,
       status: AccountStatus.ACTIVE,
       passwordHash: input.passwordHash,
@@ -150,11 +157,11 @@ async function main(): Promise<void> {
     where: { id: IDS.organisation },
     create: {
       id: IDS.organisation,
-      code: 'GUARDTRAK',
-      name: 'GuardTrak Security Services',
-      legalName: 'GuardTrak Security Services Ltd',
-      registrationNumber: 'GT-DEV-REG-001',
-      email: 'ops@guardtrak.local',
+      code: 'FOLPS',
+      name: 'Faith Of Life Protective Services',
+      legalName: 'Faith Of Life Protective Services Ltd',
+      registrationNumber: 'FOLPS-DEV-REG-001',
+      email: 'ops@folps.local',
       phone: '+23276000000',
       address: 'Freetown, Sierra Leone',
       countryCode: 'SL',
@@ -162,8 +169,10 @@ async function main(): Promise<void> {
       status: OrganisationStatus.ACTIVE,
     },
     update: {
-      code: 'GUARDTRAK',
-      name: 'GuardTrak Security Services',
+      code: 'FOLPS',
+      name: 'Faith Of Life Protective Services',
+      legalName: 'Faith Of Life Protective Services Ltd',
+      email: 'ops@folps.local',
       timezone: 'Africa/Freetown',
       status: OrganisationStatus.ACTIVE,
       deletedAt: null,
@@ -174,7 +183,7 @@ async function main(): Promise<void> {
     id: IDS.superAdmin,
     organisationId: null,
     employeeId: 'SUPER-ADMIN',
-    email: 'superadmin@guardtrak.local',
+    email: 'superadmin@folps.local',
     phone: null,
     passwordHash,
     firstName: 'Platform',
@@ -186,11 +195,12 @@ async function main(): Promise<void> {
     id: IDS.admin,
     organisationId: IDS.organisation,
     employeeId: 'ADM-001',
-    email: 'admin@guardtrak.local',
+    email: 'admin@folps.local',
     phone: '+23276000001',
     passwordHash,
-    firstName: 'Amina',
-    lastName: 'Kamara',
+    firstName: 'Daniel',
+    middleName: 'Salifu',
+    lastName: 'Samura',
     role: UserRole.ADMINISTRATOR,
   });
 
@@ -199,7 +209,7 @@ async function main(): Promise<void> {
     organisationId: IDS.organisation,
     employeeId: 'SUP-001',
     phone: '+23276000002',
-    email: 'supervisor@guardtrak.local',
+    email: 'supervisor@folps.local',
     passwordHash,
     firstName: 'Ibrahim',
     lastName: 'Sesay',
@@ -211,7 +221,7 @@ async function main(): Promise<void> {
     organisationId: IDS.organisation,
     employeeId: 'OFF-001',
     phone: '+23276000003',
-    email: 'officer@guardtrak.local',
+    email: 'officer@folps.local',
     passwordHash,
     firstName: 'Fatmata',
     lastName: 'Conteh',
@@ -223,7 +233,7 @@ async function main(): Promise<void> {
     organisationId: IDS.organisation,
     employeeId: 'OFF-002',
     phone: '+23276000004',
-    email: 'officer2@guardtrak.local',
+    email: 'officer2@folps.local',
     passwordHash,
     firstName: 'Mohamed',
     lastName: 'Bangura',
@@ -917,7 +927,7 @@ async function main(): Promise<void> {
       category: 'Getting Started',
       question: 'How do I clock in?',
       answer:
-        'Open the GuardTrak app, select your assignment, and tap Clock In while inside the site geofence.',
+        'Open the FOLPS app, select your assignment, and tap Clock In while inside the site geofence.',
       sortOrder: 1,
     },
     {
@@ -979,17 +989,17 @@ async function main(): Promise<void> {
   });
 
   // eslint-disable-next-line no-console
-  console.log('GuardTrak development seed completed (idempotent).');
+  console.log('FOLPS development seed completed (idempotent).');
   // eslint-disable-next-line no-console
-  console.log('DEV accounts (password for all): GuardTrak!Dev2026');
+  console.log('DEV accounts (password for all): FOLPS!Dev2026');
   // eslint-disable-next-line no-console
   console.log(
     [
-      'superadmin@guardtrak.local (SUPER_ADMIN)',
-      'admin@guardtrak.local (ADMINISTRATOR)',
-      'supervisor@guardtrak.local (SUPERVISOR)',
-      'officer@guardtrak.local (SECURITY_OFFICER)',
-      'officer2@guardtrak.local (SECURITY_OFFICER)',
+      'superadmin@folps.local (SUPER_ADMIN)',
+      'admin@folps.local (ADMINISTRATOR)',
+      'supervisor@folps.local (SUPERVISOR)',
+      'officer@folps.local (SECURITY_OFFICER)',
+      'officer2@folps.local (SECURITY_OFFICER)',
     ].join('\n'),
   );
 }

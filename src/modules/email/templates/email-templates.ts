@@ -15,7 +15,7 @@ export function buildPasswordResetTemplate(
 ): EmailTemplate {
   return {
     subject: interpolate(
-      'Password reset code — GuardTrak [{{locale}}]',
+      'Password reset code — FOLPS [{{locale}}]',
       locale,
     ),
     html: `<p>Your password reset code is <strong>${otp}</strong>.</p><p>It expires in ${expiresMinutes} minutes.</p>`,
@@ -28,9 +28,9 @@ export function buildWelcomeTemplate(
   locale = 'en',
 ): EmailTemplate {
   return {
-    subject: interpolate('Welcome to GuardTrak [{{locale}}]', locale),
-    html: `<p>Hello ${displayName},</p><p>Welcome to GuardTrak.</p>`,
-    text: `Hello ${displayName}, welcome to GuardTrak.`,
+    subject: interpolate('Welcome to FOLPS [{{locale}}]', locale),
+    html: `<p>Hello ${displayName},</p><p>Welcome to FOLPS.</p>`,
+    text: `Hello ${displayName}, welcome to FOLPS.`,
   };
 }
 
@@ -69,7 +69,7 @@ export function buildSupervisorAlertTemplate(
   locale = 'en',
 ): EmailTemplate {
   return {
-    subject: interpolate('Supervisor alert — GuardTrak [{{locale}}]', locale),
+    subject: interpolate('Supervisor alert — FOLPS [{{locale}}]', locale),
     html: `<p>${message}</p>`,
     text: message,
   };

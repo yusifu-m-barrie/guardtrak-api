@@ -228,7 +228,7 @@ export default (): GuardTrakConfig => {
       smtpPort: Number.parseInt(process.env.SMTP_PORT ?? '1025', 10),
       smtpUser: process.env.SMTP_USER ?? '',
       smtpPass: process.env.SMTP_PASS ?? '',
-      smtpFrom: process.env.SMTP_FROM ?? 'noreply@guardtrak.local',
+      smtpFrom: process.env.SMTP_FROM ?? 'noreply@folps.local',
       resendApiKey: process.env.EMAIL_RESEND_API_KEY ?? '',
       awsSesRegion: process.env.AWS_SES_REGION ?? '',
     },

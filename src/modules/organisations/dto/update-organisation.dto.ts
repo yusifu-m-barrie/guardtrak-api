@@ -12,7 +12,7 @@ import { Transform } from 'class-transformer';
 import { transformIfString } from '../../../common/utils/transform.util';
 
 export class UpdateOrganisationDto {
-  @ApiPropertyOptional({ example: 'GuardTrak Security Ltd' })
+  @ApiPropertyOptional({ example: 'Faith Of Life Protective Services' })
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -21,7 +21,7 @@ export class UpdateOrganisationDto {
   )
   name?: string;
 
-  @ApiPropertyOptional({ example: 'GuardTrak Security Limited' })
+  @ApiPropertyOptional({ example: 'Faith Of Life Protective Services Ltd' })
   @IsOptional()
   @IsString()
   @MaxLength(200)

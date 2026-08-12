@@ -439,7 +439,7 @@ export class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
-  SMTP_FROM = 'noreply@guardtrak.local';
+  SMTP_FROM = 'noreply@folps.local';
 
   @IsOptional()
   @IsString()
@@ -619,7 +619,7 @@ export function applyDevelopmentDefaults(
     EMAIL_PROVIDER: config.EMAIL_PROVIDER ?? 'smtp',
     SMTP_HOST: config.SMTP_HOST ?? 'localhost',
     SMTP_PORT: config.SMTP_PORT ?? '1025',
-    SMTP_FROM: config.SMTP_FROM ?? 'noreply@guardtrak.local',
+    SMTP_FROM: config.SMTP_FROM ?? 'noreply@folps.local',
     WS_ENABLED: config.WS_ENABLED ?? 'true',
     WS_CORS_ORIGINS:
       config.WS_CORS_ORIGINS ??

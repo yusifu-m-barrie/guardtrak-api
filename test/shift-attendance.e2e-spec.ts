@@ -13,7 +13,7 @@ import { RequestIdMiddleware } from '../src/common/middleware/request-id.middlew
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { asErrorBody, asSuccessBody } from './http-body';
 
-const PASSWORD = 'GuardTrak!Dev2026';
+const PASSWORD = 'FOLPS!Dev2026';
 const CLIENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const OFFICER1_PROFILE_ID = '77777777-7777-4777-8777-777777777777';
 const OFFICER2_PROFILE_ID = '88888888-8888-4888-8888-888888888888';
@@ -150,7 +150,7 @@ describe('Shift attendance Phase 5 (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId,
         password: PASSWORD,
         installationId,
@@ -229,7 +229,7 @@ describe('Shift attendance Phase 5 (e2e)', () => {
   }) {
     siteSeq += 1;
     const org = await prisma.organisation.findFirst({
-      where: { code: 'GUARDTRAK' },
+      where: { code: 'FOLPS' },
     });
     const site = await prisma.securitySite.create({
       data: {
@@ -879,7 +879,7 @@ describe('Shift attendance Phase 5 (e2e)', () => {
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        organisationCode: 'GUARDTRAK',
+        organisationCode: 'FOLPS',
         employeeId: 'ADM-001',
         password: PASSWORD,
         installationId: `p5-final-${runId}`,

@@ -10,7 +10,7 @@ import {
 import { DevicePlatform } from '../../../../generated/prisma/client';
 
 export class LoginDto {
-  @ApiProperty({ example: 'GUARDTRAK' })
+  @ApiProperty({ example: 'FOLPS' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(64)

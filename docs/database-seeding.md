@@ -17,7 +17,7 @@ Seed uses stable UUIDs and `upsert` / existence checks. Running twice must not d
 Password for all seeded users:
 
 ```text
-GuardTrak!Dev2026
+FOLPS!Dev2026
 ```
 
 | Email | Role |
