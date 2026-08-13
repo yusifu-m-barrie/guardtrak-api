@@ -27,6 +27,7 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/scripts/railway-start.sh ./scripts/railway-start.sh
 COPY --from=build /app/scripts/rebrand-to-folps.mjs ./scripts/rebrand-to-folps.mjs
 COPY --from=build /app/scripts/cleanup-real-testing.mjs ./scripts/cleanup-real-testing.mjs
+COPY --from=build /app/scripts/archive-unwanted-users.mjs ./scripts/archive-unwanted-users.mjs
 RUN chmod +x ./scripts/railway-start.sh
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \

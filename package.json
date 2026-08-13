@@ -26,6 +26,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "rebrand:folps": "node scripts/rebrand-to-folps.mjs",
     "cleanup:real-testing": "node scripts/cleanup-real-testing.mjs",
+    "archive:unwanted-users": "node scripts/archive-unwanted-users.mjs",
     "prisma:seed": "node --import tsx prisma/seed.ts",
     "prisma:studio": "prisma studio"
   },
