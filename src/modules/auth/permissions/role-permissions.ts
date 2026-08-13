@@ -46,10 +46,8 @@ const SUPERVISOR_PERMISSIONS: AuthPermission[] = [
   // No org-wide client directory — clients are scoped via team links when needed.
   'site:read',
   'shift:read',
+  // Assignments: view team only — create/update/cancel are admin-only.
   'assignment:read',
-  'assignment:create',
-  'assignment:update',
-  'assignment:cancel',
   'attendance:read',
   'attendance:read:assigned',
   'attendance:review',
@@ -58,7 +56,6 @@ const SUPERVISOR_PERMISSIONS: AuthPermission[] = [
   'break:review',
   'patrol-route:read',
   'patrol-assignment:read',
-  'patrol-assignment:create',
   'patrol-assignment:review',
   'patrol-visit:read',
   'patrol-visit:review',
@@ -79,6 +76,7 @@ const SUPERVISOR_PERMISSIONS: AuthPermission[] = [
   'emergency:manage',
   'support:read',
   'support:update',
+  // Home dashboard summary widgets (Reports / payroll page is admin-only in the UI).
   'report:read',
   'patrol:monitor',
   'sos:respond',

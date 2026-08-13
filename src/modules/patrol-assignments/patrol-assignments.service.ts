@@ -149,17 +149,10 @@ export class PatrolAssignmentsService {
   ) {
     const organisationId = requireOrganisationId(user);
     if (user.role === AppUserRole.SUPERVISOR) {
-      const shiftAssignment = await this.prisma.assignment.findFirst({
-        where: { id: dto.assignmentId, organisationId },
-        select: { officerId: true },
-      });
-      if (!shiftAssignment) {
-        tenantNotFound(ErrorCode.ASSIGNMENT_NOT_FOUND);
-      }
-      await this.accessService.assertSupervisorMayManageOfficer(
-        user,
-        organisationId,
-        shiftAssignment.officerId,
+      throw new AppException(
+        'Only administrators can create patrol assignments',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.AUTH_INSUFFICIENT_PERMISSION,
       );
     }
     const created = await this.createOne(organisationId, user.id, dto, ctx);
@@ -172,6 +165,13 @@ export class PatrolAssignmentsService {
     ctx: ServiceRequestContext,
   ) {
     const organisationId = requireOrganisationId(user);
+    if (user.role === AppUserRole.SUPERVISOR) {
+      throw new AppException(
+        'Only administrators can create patrol assignments',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.AUTH_INSUFFICIENT_PERMISSION,
+      );
+    }
     const created = await this.prisma.$transaction(async (tx) => {
       const rows = [];
       for (const item of dto.assignments) {

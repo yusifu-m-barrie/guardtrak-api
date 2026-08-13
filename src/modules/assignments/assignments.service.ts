@@ -139,10 +139,10 @@ export class AssignmentsService {
 
     let supervisorId = dto.supervisorId ?? null;
     if (user.role === AppUserRole.SUPERVISOR) {
-      supervisorId = await this.accessService.assertSupervisorMayManageOfficer(
-        user,
-        organisationId,
-        dto.officerId,
+      throw new AppException(
+        'Only administrators can create assignments. Supervisors can view assignments for their team.',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.AUTH_INSUFFICIENT_PERMISSION,
       );
     }
 
@@ -229,13 +229,11 @@ export class AssignmentsService {
 
     let supervisorId = dto.supervisorId ?? null;
     if (user.role === AppUserRole.SUPERVISOR) {
-      for (const officerId of uniqueOfficerIds) {
-        supervisorId = await this.accessService.assertSupervisorMayManageOfficer(
-          user,
-          organisationId,
-          officerId,
-        );
-      }
+      throw new AppException(
+        'Only administrators can create assignments. Supervisors can view assignments for their team.',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.AUTH_INSUFFICIENT_PERMISSION,
+      );
     }
 
     const created = await this.prisma.$transaction(async (tx) => {

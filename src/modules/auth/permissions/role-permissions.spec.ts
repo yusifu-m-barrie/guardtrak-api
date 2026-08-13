@@ -14,10 +14,14 @@ describe('role permissions', () => {
     expect(permissions).toContain('shift:manage');
   });
 
-  it('gives supervisors scoped create for assignments and patrols', () => {
+  it('gives supervisors team view without assignment create; keeps report:read for home widgets', () => {
     const permissions = getPermissionsForRole(UserRole.SUPERVISOR);
-    expect(permissions).toContain('assignment:create');
-    expect(permissions).toContain('patrol-assignment:create');
+    expect(permissions).toContain('assignment:read');
+    expect(permissions).not.toContain('assignment:create');
+    expect(permissions).not.toContain('assignment:update');
+    expect(permissions).not.toContain('assignment:cancel');
+    expect(permissions).not.toContain('patrol-assignment:create');
+    expect(permissions).toContain('report:read');
     expect(permissions).toContain('patrol-route:read');
     expect(permissions).toContain('site:read');
     expect(permissions).toContain('shift:read');
