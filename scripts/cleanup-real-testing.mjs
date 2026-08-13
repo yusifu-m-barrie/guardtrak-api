@@ -190,7 +190,10 @@ async function main() {
       'patrol_visits',
     );
     await wipe(
-      `DELETE FROM patrol_assignment_events WHERE "organisationId" = $1`,
+      `DELETE FROM patrol_assignment_events pae
+       USING patrol_assignments pa
+       WHERE pae."patrolAssignmentId" = pa.id
+         AND pa."organisationId" = $1`,
       'patrol_assignment_events',
     );
     await wipe(
@@ -224,7 +227,10 @@ async function main() {
     );
 
     await wipe(
-      `DELETE FROM assignment_events WHERE "organisationId" = $1`,
+      `DELETE FROM assignment_events ae
+       USING assignments a
+       WHERE ae."assignmentId" = a.id
+         AND a."organisationId" = $1`,
       'assignment_events',
     );
     await wipe(
