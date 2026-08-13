@@ -13,6 +13,20 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());
 }
 
+function parseCsvList(value: string | undefined): string[] {
+  if (!value?.trim()) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 function resolveEnableSwagger(
   nodeEnv: NodeEnvironment,
   explicit?: string,
@@ -83,6 +97,10 @@ export default (): GuardTrakConfig => {
       enforceDeviceOwnership: parseBoolean(
         process.env.AUTH_ENFORCE_DEVICE_OWNERSHIP,
         nodeEnv === 'production' || nodeEnv === 'staging',
+      ),
+      // Comma-separated installationIds allowed to switch accounts (dev phones only).
+      deviceOwnershipBypassInstallationIds: parseCsvList(
+        process.env.AUTH_DEVICE_OWNERSHIP_BYPASS_INSTALLATION_IDS,
       ),
       passwordHistoryCount: Number.parseInt(
         process.env.AUTH_PASSWORD_HISTORY_COUNT ?? '5',

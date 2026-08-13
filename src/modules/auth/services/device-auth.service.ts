@@ -53,7 +53,12 @@ export class DeviceAuthService {
 
       // Live/production: one installationId stays bound to one account.
       // Local/testing: allow the same browser/device to switch accounts freely.
-      if (ownershipMismatch && this.enforceDeviceOwnership()) {
+      // Allowlisted developer installationIds may also rebind in production.
+      if (
+        ownershipMismatch &&
+        this.enforceDeviceOwnership() &&
+        !this.isOwnershipBypassInstallation(input.installationId)
+      ) {
         throw new AppException(
           'This device is already registered to another account',
           HttpStatus.FORBIDDEN,
@@ -167,5 +172,14 @@ export class DeviceAuthService {
     }
     const nodeEnv = this.configService.get<string>('app.nodeEnv');
     return nodeEnv === 'production' || nodeEnv === 'staging';
+  }
+
+  /** Explicit allowlist for developer devices that may switch accounts. */
+  private isOwnershipBypassInstallation(installationId: string): boolean {
+    const allowlist =
+      this.configService.get<string[]>(
+        'auth.deviceOwnershipBypassInstallationIds',
+      ) ?? [];
+    return allowlist.includes(installationId);
   }
 }

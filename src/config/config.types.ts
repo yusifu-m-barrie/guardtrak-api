@@ -35,6 +35,11 @@ export interface AuthConfig {
   webDeviceAutoApprove: boolean;
   /** When true, reject login if installationId belongs to another user. */
   enforceDeviceOwnership: boolean;
+  /**
+   * Installation IDs that may rebind to any account even when ownership
+   * enforcement is on (developer phones only).
+   */
+  deviceOwnershipBypassInstallationIds: string[];
   passwordHistoryCount: number;
   passwordMaxAgeDays: number;
   strictFingerprint: boolean;
