@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   AccountStatus,
+  AssignmentStatus,
   AuditAction,
   IncidentNoteVisibility,
   IncidentPriority,
@@ -166,6 +167,16 @@ export class IncidentsService {
       tenantNotFound(ErrorCode.SITE_NOT_FOUND);
     }
 
+    const resolvedShiftAndAssignment =
+      await this.resolveOfficerShiftAssignmentForCreate({
+        user,
+        organisationId,
+        reportingOfficerId,
+        siteId: site.id,
+        assignmentId: dto.assignmentId,
+        shiftId: dto.shiftId,
+      });
+
     if (dto.localIncidentId) {
       const existing = await this.prisma.incident.findFirst({
         where: {
@@ -198,8 +209,8 @@ export class IncidentsService {
         incidentNumber,
         clientId: dto.clientId ?? site.clientId,
         siteId: site.id,
-        shiftId: dto.shiftId ?? null,
-        assignmentId: dto.assignmentId ?? null,
+        shiftId: resolvedShiftAndAssignment.shiftId,
+        assignmentId: resolvedShiftAndAssignment.assignmentId,
         patrolAssignmentId: dto.patrolAssignmentId ?? null,
         reportedByOfficerId: reportingOfficerId,
         reportedByUserId: user.id,
@@ -266,6 +277,107 @@ export class IncidentsService {
       include: INCIDENT_INCLUDE,
     });
     return toIncidentResponse(hydrated ?? incident);
+  }
+
+  /**
+   * Security officers may only file incidents against their own active shift assignment.
+   * Supervisors/admins may still create without an assignment (ops backfill).
+   */
+  private async resolveOfficerShiftAssignmentForCreate(input: {
+    user: RequestUser;
+    organisationId: string;
+    reportingOfficerId: string;
+    siteId: string;
+    assignmentId?: string;
+    shiftId?: string;
+  }): Promise<{ assignmentId: string | null; shiftId: string | null }> {
+    const isOfficer = input.user.role === UserRole.SECURITY_OFFICER;
+    if (!isOfficer) {
+      return {
+        assignmentId: input.assignmentId ?? null,
+        shiftId: input.shiftId ?? null,
+      };
+    }
+
+    if (!input.assignmentId) {
+      throw new AppException(
+        'You can only report an incident while assigned to an active shift',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.ASSIGNMENT_NOT_CURRENT,
+      );
+    }
+
+    const assignment = await this.prisma.assignment.findFirst({
+      where: {
+        id: input.assignmentId,
+        organisationId: input.organisationId,
+        officerId: input.reportingOfficerId,
+        status: {
+          in: [
+            AssignmentStatus.ASSIGNED,
+            AssignmentStatus.CONFIRMED,
+            AssignmentStatus.IN_PROGRESS,
+          ],
+        },
+      },
+      include: {
+        shift: {
+          select: {
+            id: true,
+            siteId: true,
+            deletedAt: true,
+            scheduledStartAt: true,
+            scheduledEndAt: true,
+            gracePeriodMinutes: true,
+          },
+        },
+      },
+    });
+
+    if (!assignment?.shift || assignment.shift.deletedAt) {
+      throw new AppException(
+        'Incident must be linked to your current shift assignment',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.INCIDENT_ASSIGNMENT_INVALID,
+      );
+    }
+
+    if (assignment.shift.siteId !== input.siteId) {
+      throw new AppException(
+        'Incident site must match your assigned shift site',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.INCIDENT_ASSIGNMENT_INVALID,
+      );
+    }
+
+    const now = Date.now();
+    const graceMs = (assignment.shift.gracePeriodMinutes ?? 0) * 60_000;
+    const windowStart =
+      assignment.shift.scheduledStartAt.getTime() - 2 * 60 * 60_000;
+    const windowEnd = assignment.shift.scheduledEndAt.getTime() + graceMs;
+    const inWindow = now >= windowStart && now <= windowEnd;
+    const inProgress = assignment.status === AssignmentStatus.IN_PROGRESS;
+
+    if (!inProgress && !inWindow) {
+      throw new AppException(
+        'You can only report an incident during your assigned shift window',
+        HttpStatus.FORBIDDEN,
+        ErrorCode.ASSIGNMENT_NOT_CURRENT,
+      );
+    }
+
+    if (input.shiftId && input.shiftId !== assignment.shiftId) {
+      throw new AppException(
+        'Shift does not match the selected assignment',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.INCIDENT_ASSIGNMENT_INVALID,
+      );
+    }
+
+    return {
+      assignmentId: assignment.id,
+      shiftId: assignment.shiftId,
+    };
   }
 
   private async notifySupervisorsOnCreate(
