@@ -1,9 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   AssignmentStatus,
   AuditAction,
   OfficerEmploymentStatus,
   Prisma,
+  RecurrenceType,
   ShiftStatus,
   SiteStatus,
 } from '../../../generated/prisma/client';
@@ -38,6 +40,13 @@ import type { ListUpcomingAssignmentsQueryDto } from './dto/list-upcoming-assign
 import type { ReassignAssignmentDto } from './dto/reassign-assignment.dto';
 import type { UpdateAssignmentStatusDto } from './dto/update-assignment-status.dto';
 import { toAssignmentResponse } from './mappers/assignment.mapper';
+import {
+  currentOccurrence,
+  expandOccurrences,
+  isRecurringShift,
+  recurrencesOverlap,
+  type ShiftRecurrenceInput,
+} from '../shifts/shift-recurrence.util';
 
 const ASSIGNMENT_SORT_FIELDS = [
   'assignedAt',
@@ -93,8 +102,16 @@ const ASSIGNMENT_INCLUDE = {
       status: true,
       siteId: true,
       gracePeriodMinutes: true,
+      unpaidBreakMinutes: true,
       scheduledStartAt: true,
       scheduledEndAt: true,
+      recurrenceType: true,
+      recurrenceEndAt: true,
+      recurrenceDaysOfWeek: true,
+      timezone: true,
+      organisation: {
+        select: { timezone: true },
+      },
       site: {
         select: {
           id: true,
@@ -128,6 +145,7 @@ export class AssignmentsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuthAuditService,
     private readonly accessService: AssignmentAccessService,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(
@@ -137,7 +155,7 @@ export class AssignmentsService {
   ) {
     const organisationId = requireOrganisationId(user);
 
-    let supervisorId = dto.supervisorId ?? null;
+    const supervisorId = dto.supervisorId ?? null;
     if (user.role === AppUserRole.SUPERVISOR) {
       throw new AppException(
         'Only administrators can create assignments. Supervisors can view assignments for their team.',
@@ -154,11 +172,7 @@ export class AssignmentsService {
       );
       await this.assertOfficerAssignable(tx, organisationId, dto.officerId);
       if (supervisorId) {
-        await this.assertSupervisorAssignable(
-          tx,
-          organisationId,
-          supervisorId,
-        );
+        await this.assertSupervisorAssignable(tx, organisationId, supervisorId);
       }
 
       await this.assertNoDuplicate(
@@ -167,13 +181,7 @@ export class AssignmentsService {
         dto.shiftId,
         dto.officerId,
       );
-      await this.assertNoOverlap(
-        tx,
-        organisationId,
-        dto.officerId,
-        shift.scheduledStartAt,
-        shift.scheduledEndAt,
-      );
+      await this.assertNoOverlap(tx, organisationId, dto.officerId, shift);
 
       const assignment = await tx.assignment.create({
         data: {
@@ -181,6 +189,7 @@ export class AssignmentsService {
           shiftId: dto.shiftId,
           officerId: dto.officerId,
           supervisorId,
+          notes: trimOrUndefined(dto.notes) ?? null,
           status: AssignmentStatus.ASSIGNED,
           createdByUserId: user.id,
         },
@@ -216,7 +225,7 @@ export class AssignmentsService {
       },
     });
 
-    return toAssignmentResponse(created);
+    return this.toResponse(created);
   }
 
   async createBatch(
@@ -227,7 +236,7 @@ export class AssignmentsService {
     const organisationId = requireOrganisationId(user);
     const uniqueOfficerIds = [...new Set(dto.officerIds)];
 
-    let supervisorId = dto.supervisorId ?? null;
+    const supervisorId = dto.supervisorId ?? null;
     if (user.role === AppUserRole.SUPERVISOR) {
       throw new AppException(
         'Only administrators can create assignments. Supervisors can view assignments for their team.',
@@ -243,11 +252,7 @@ export class AssignmentsService {
         dto.shiftId,
       );
       if (supervisorId) {
-        await this.assertSupervisorAssignable(
-          tx,
-          organisationId,
-          supervisorId,
-        );
+        await this.assertSupervisorAssignable(tx, organisationId, supervisorId);
       }
 
       for (const officerId of uniqueOfficerIds) {
@@ -258,13 +263,7 @@ export class AssignmentsService {
           dto.shiftId,
           officerId,
         );
-        await this.assertNoOverlap(
-          tx,
-          organisationId,
-          officerId,
-          shift.scheduledStartAt,
-          shift.scheduledEndAt,
-        );
+        await this.assertNoOverlap(tx, organisationId, officerId, shift);
       }
 
       const results = [];
@@ -311,7 +310,7 @@ export class AssignmentsService {
       },
     });
 
-    return { data: created.map((a) => toAssignmentResponse(a)) };
+    return { data: created.map((a) => this.toResponse(a)) };
   }
 
   async findAll(user: RequestUser, query: ListAssignmentsQueryDto) {
@@ -403,7 +402,7 @@ export class AssignmentsService {
     ]);
 
     return {
-      data: items.map((a) => toAssignmentResponse(a)),
+      data: items.map((a) => this.toResponse(a)),
       meta: buildPaginationMeta(page, limit, total),
     };
   }
@@ -415,11 +414,13 @@ export class AssignmentsService {
       organisationId,
     );
     const now = new Date();
+    const earlyMs = 2 * 60 * 60_000;
 
     const candidates = await this.prisma.assignment.findMany({
       where: {
         organisationId,
         officerId,
+        isActive: true,
         status: {
           in: [
             AssignmentStatus.ASSIGNED,
@@ -438,27 +439,18 @@ export class AssignmentsService {
         assignment.status === AssignmentStatus.IN_PROGRESS && assignment.shift,
     );
     if (inProgress) {
-      return toAssignmentResponse(inProgress);
+      const occurrence = this.occurrenceFor(inProgress, now, earlyMs);
+      return this.toResponse(inProgress, occurrence);
     }
 
-    const inWindow = candidates.find((assignment) => {
-      if (!assignment.shift) {
-        return false;
+    for (const assignment of candidates) {
+      const occurrence = this.occurrenceFor(assignment, now, earlyMs);
+      if (occurrence) {
+        return this.toResponse(assignment, occurrence);
       }
-      const graceMs = assignment.shift.gracePeriodMinutes * 60_000;
-      // Allow officers to see the assignment from 2h before start until end + grace.
-      const windowStart = new Date(
-        assignment.shift.scheduledStartAt.getTime() - 2 * 60 * 60_000,
-      );
-      const windowEnd = new Date(
-        assignment.shift.scheduledEndAt.getTime() + graceMs,
-      );
-      return now >= windowStart && now <= windowEnd;
-    });
+    }
 
-    // Do not promote far-future shifts to "current" — those belong in upcoming.
-    // Late clock-in after start is already covered by inWindow (start-2h → end+grace).
-    return inWindow ? toAssignmentResponse(inWindow) : null;
+    return null;
   }
 
   async findUpcoming(
@@ -472,50 +464,68 @@ export class AssignmentsService {
     );
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
     const from = query.from ? new Date(query.from) : new Date();
-    const to = query.to ? new Date(query.to) : undefined;
+    const to = query.to
+      ? new Date(query.to)
+      : new Date(from.getTime() + 14 * 24 * 60 * 60_000);
 
-    // Show assignments whose shift has not finished yet (started or future),
-    // not only those whose start is still in the future.
-    const where: Prisma.AssignmentWhereInput = {
-      organisationId,
-      officerId,
-      status: {
-        in: [
-          AssignmentStatus.ASSIGNED,
-          AssignmentStatus.CONFIRMED,
-          AssignmentStatus.IN_PROGRESS,
-        ],
-      },
-      shift: {
-        deletedAt: null,
-        scheduledEndAt: {
-          gte: from,
+    const candidates = await this.prisma.assignment.findMany({
+      where: {
+        organisationId,
+        officerId,
+        isActive: true,
+        status: {
+          in: [
+            AssignmentStatus.ASSIGNED,
+            AssignmentStatus.CONFIRMED,
+            AssignmentStatus.IN_PROGRESS,
+          ],
         },
-        ...(to ? { scheduledStartAt: { lte: to } } : {}),
+        shift: {
+          deletedAt: null,
+          OR: [
+            {
+              recurrenceType: RecurrenceType.NONE,
+              scheduledEndAt: { gte: from },
+              scheduledStartAt: { lte: to },
+            },
+            {
+              recurrenceType: { not: RecurrenceType.NONE },
+              scheduledStartAt: { lte: to },
+              OR: [
+                { recurrenceEndAt: null },
+                { recurrenceEndAt: { gte: from } },
+              ],
+            },
+          ],
+        },
       },
-    };
+      include: ASSIGNMENT_INCLUDE,
+      orderBy: { shift: { scheduledStartAt: 'asc' } },
+    });
 
-    const [items, total] = await Promise.all([
-      this.prisma.assignment.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { shift: { scheduledStartAt: 'asc' } },
-        include: ASSIGNMENT_INCLUDE,
-      }),
-      this.prisma.assignment.count({ where }),
-    ]);
+    const expanded = candidates.flatMap((assignment) => {
+      const occurrences = expandOccurrences(
+        this.toRecurrenceInput(assignment),
+        from,
+        to,
+        31,
+      );
+      return occurrences.map((occurrence) => ({ assignment, occurrence }));
+    });
+    expanded.sort(
+      (a, b) => a.occurrence.startAt.getTime() - b.occurrence.startAt.getTime(),
+    );
 
+    const pageItems = expanded.slice(skip, skip + limit);
     return {
-      data: items.map((a) => toAssignmentResponse(a)),
-      meta: buildPaginationMeta(page, limit, total),
+      data: pageItems.map((item) =>
+        this.toResponse(item.assignment, item.occurrence),
+      ),
+      meta: buildPaginationMeta(page, limit, expanded.length),
     };
   }
 
-  async findHistory(
-    user: RequestUser,
-    query: ListUpcomingAssignmentsQueryDto,
-  ) {
+  async findHistory(user: RequestUser, query: ListUpcomingAssignmentsQueryDto) {
     const organisationId = requireOrganisationId(user);
     const officerId = await this.accessService.resolveOfficerProfileId(
       user,
@@ -576,7 +586,7 @@ export class AssignmentsService {
     ]);
 
     return {
-      data: items.map((a) => toAssignmentResponse(a)),
+      data: items.map((a) => this.toResponse(a)),
       meta: buildPaginationMeta(page, limit, total),
     };
   }
@@ -597,7 +607,7 @@ export class AssignmentsService {
       assignment,
     );
 
-    return toAssignmentResponse(assignment);
+    return this.toResponse(assignment);
   }
 
   async updateStatus(
@@ -669,7 +679,7 @@ export class AssignmentsService {
       },
     });
 
-    return toAssignmentResponse(updated);
+    return this.toResponse(updated);
   }
 
   async confirm(user: RequestUser, id: string, ctx: ServiceRequestContext) {
@@ -725,7 +735,7 @@ export class AssignmentsService {
       metadata: { action: 'confirm' },
     });
 
-    return toAssignmentResponse(updated);
+    return this.toResponse(updated);
   }
 
   async reassign(
@@ -788,8 +798,7 @@ export class AssignmentsService {
         tx,
         organisationId,
         dto.replacementOfficerId,
-        shift.scheduledStartAt,
-        shift.scheduledEndAt,
+        shift,
         existing.id,
       );
 
@@ -853,8 +862,8 @@ export class AssignmentsService {
     });
 
     return {
-      original: toAssignmentResponse(result.original),
-      replacement: toAssignmentResponse(result.replacement),
+      original: this.toResponse(result.original),
+      replacement: this.toResponse(result.replacement),
     };
   }
 
@@ -943,6 +952,7 @@ export class AssignmentsService {
       where: { id: shiftId, organisationId, deletedAt: null },
       include: {
         site: { select: { id: true, status: true, deletedAt: true } },
+        organisation: { select: { timezone: true } },
       },
     });
     if (!shift) {
@@ -1043,34 +1053,76 @@ export class AssignmentsService {
     tx: Prisma.TransactionClient,
     organisationId: string,
     officerId: string,
-    proposedStart: Date,
-    proposedEnd: Date,
+    proposedShift: {
+      scheduledStartAt: Date;
+      scheduledEndAt: Date;
+      recurrenceType?: RecurrenceType | null;
+      recurrenceEndAt?: Date | null;
+      recurrenceDaysOfWeek?: number[] | null;
+      timezone?: string | null;
+      organisation?: { timezone: string } | null;
+    },
     ignoreAssignmentId?: string,
   ) {
     const others = await tx.assignment.findMany({
       where: {
         organisationId,
         officerId,
+        isActive: true,
         status: { in: [...ACTIVE_ASSIGNMENT_STATUSES] },
         ...(ignoreAssignmentId ? { id: { not: ignoreAssignmentId } } : {}),
         shift: { deletedAt: null },
       },
       include: {
         shift: {
-          select: { scheduledStartAt: true, scheduledEndAt: true },
+          select: {
+            scheduledStartAt: true,
+            scheduledEndAt: true,
+            recurrenceType: true,
+            recurrenceEndAt: true,
+            recurrenceDaysOfWeek: true,
+            timezone: true,
+            organisation: { select: { timezone: true } },
+          },
         },
       },
     });
 
+    const windowStart = proposedShift.scheduledStartAt;
+    const windowEnd = proposedShift.recurrenceEndAt
+      ? proposedShift.recurrenceEndAt
+      : new Date(windowStart.getTime() + 62 * 24 * 60 * 60_000);
+    const proposed: ShiftRecurrenceInput = {
+      recurrenceType: proposedShift.recurrenceType ?? RecurrenceType.NONE,
+      scheduledStartAt: proposedShift.scheduledStartAt,
+      scheduledEndAt: proposedShift.scheduledEndAt,
+      recurrenceEndAt: proposedShift.recurrenceEndAt ?? null,
+      recurrenceDaysOfWeek: proposedShift.recurrenceDaysOfWeek ?? [],
+      timezone: proposedShift.timezone,
+      organisationTimezone: proposedShift.organisation?.timezone,
+    };
+
     for (const other of others) {
-      if (
-        rangesOverlap(
-          other.shift.scheduledStartAt,
-          other.shift.scheduledEndAt,
-          proposedStart,
-          proposedEnd,
-        )
-      ) {
+      const otherInput: ShiftRecurrenceInput = {
+        recurrenceType: other.shift.recurrenceType,
+        scheduledStartAt: other.shift.scheduledStartAt,
+        scheduledEndAt: other.shift.scheduledEndAt,
+        recurrenceEndAt: other.shift.recurrenceEndAt,
+        recurrenceDaysOfWeek: other.shift.recurrenceDaysOfWeek,
+        timezone: other.shift.timezone,
+        organisationTimezone: other.shift.organisation?.timezone,
+      };
+      const overlaps =
+        isRecurringShift(proposed.recurrenceType) ||
+        isRecurringShift(otherInput.recurrenceType)
+          ? recurrencesOverlap(proposed, otherInput, windowStart, windowEnd)
+          : rangesOverlap(
+              other.shift.scheduledStartAt,
+              other.shift.scheduledEndAt,
+              proposedShift.scheduledStartAt,
+              proposedShift.scheduledEndAt,
+            );
+      if (overlaps) {
         throw new AppException(
           'Officer has an overlapping active assignment',
           HttpStatus.CONFLICT,
@@ -1078,5 +1130,67 @@ export class AssignmentsService {
         );
       }
     }
+  }
+
+  private geofenceEnabled(): boolean {
+    return (
+      this.configService.get<boolean>('attendance.geofenceEnabled') ?? true
+    );
+  }
+
+  private toRecurrenceInput(assignment: {
+    shift?: {
+      scheduledStartAt: Date;
+      scheduledEndAt: Date;
+      recurrenceType?: RecurrenceType | null;
+      recurrenceEndAt?: Date | null;
+      recurrenceDaysOfWeek?: number[] | null;
+      timezone?: string | null;
+      organisation?: { timezone: string } | null;
+    } | null;
+  }): ShiftRecurrenceInput {
+    const shift = assignment.shift;
+    return {
+      recurrenceType: shift?.recurrenceType ?? RecurrenceType.NONE,
+      scheduledStartAt: shift?.scheduledStartAt ?? new Date(0),
+      scheduledEndAt: shift?.scheduledEndAt ?? new Date(0),
+      recurrenceEndAt: shift?.recurrenceEndAt ?? null,
+      recurrenceDaysOfWeek: shift?.recurrenceDaysOfWeek ?? [],
+      timezone: shift?.timezone,
+      organisationTimezone: shift?.organisation?.timezone,
+    };
+  }
+
+  private occurrenceFor(
+    assignment: Parameters<AssignmentsService['toRecurrenceInput']>[0] & {
+      shift?: { gracePeriodMinutes?: number } | null;
+    },
+    now: Date,
+    earlyMs: number,
+  ) {
+    const graceMs = (assignment.shift?.gracePeriodMinutes ?? 15) * 60_000;
+    return currentOccurrence(
+      this.toRecurrenceInput(assignment),
+      now,
+      earlyMs,
+      graceMs,
+    );
+  }
+
+  private toResponse(
+    assignment: Parameters<typeof toAssignmentResponse>[0],
+    occurrence?: { dateKey: string; startAt: Date; endAt: Date } | null,
+  ) {
+    const timezone =
+      assignment.shift?.timezone ??
+      assignment.shift?.organisation?.timezone ??
+      null;
+    return toAssignmentResponse(assignment, {
+      geofenceEnforcementEnabled: this.geofenceEnabled(),
+      timezone,
+      occurrenceDate: occurrence?.dateKey ?? null,
+      occurrenceStartAt: occurrence?.startAt ?? null,
+      occurrenceEndAt: occurrence?.endAt ?? null,
+    });
   }
 }

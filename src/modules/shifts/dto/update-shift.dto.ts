@@ -1,6 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsDateString,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -9,6 +12,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { RecurrenceType } from '../../../../generated/prisma/client';
 
 export class UpdateShiftDto {
   @ApiPropertyOptional({ format: 'uuid' })
@@ -64,4 +68,29 @@ export class UpdateShiftDto {
   @IsString()
   @MaxLength(4000)
   instructions?: string | null;
+
+  @ApiPropertyOptional({ enum: RecurrenceType })
+  @IsOptional()
+  @IsEnum(RecurrenceType)
+  recurrenceType?: RecurrenceType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  recurrenceEndAt?: string | null;
+
+  @ApiPropertyOptional({ type: [Number] })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  recurrenceDaysOfWeek?: number[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timezone?: string | null;
 }

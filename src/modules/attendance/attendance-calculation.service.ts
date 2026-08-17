@@ -35,9 +35,7 @@ export class AttendanceCalculationService {
       this.minutesBetween(input.clockInServerAt, input.clockOutServerAt),
     );
     const totalBreakMinutes = this.clampMinutes(input.completedBreakMinutes);
-    const payableMinutes = this.clampMinutes(
-      grossMinutes - this.clampMinutes(input.unpaidBreakMinutes),
-    );
+    const payableMinutes = this.clampMinutes(grossMinutes - totalBreakMinutes);
 
     const scheduledDurationMinutes = this.clampMinutes(
       this.minutesBetween(input.scheduledStartAt, input.scheduledEndAt),

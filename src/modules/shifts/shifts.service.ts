@@ -4,6 +4,7 @@ import {
   AssignmentStatus,
   AuditAction,
   Prisma,
+  RecurrenceType,
   ShiftStatus,
   SiteStatus,
 } from '../../../generated/prisma/client';
@@ -37,6 +38,13 @@ import type { UpdateShiftDto } from './dto/update-shift.dto';
 import type { UpdateShiftStatusDto } from './dto/update-shift-status.dto';
 import { toShiftResponse } from './mappers/shift.mapper';
 import { assertShiftScheduleValid } from './shift-validation.util';
+import { isRecurringShift, normaliseDaysOfWeek } from './shift-recurrence.util';
+import {
+  endOfZonedDay,
+  isValidTimeZone,
+  parseDateKey,
+  resolveTimeZone,
+} from '../../common/utils/timezone.util';
 import {
   assertShiftTransition,
   shiftTransitionRequiresReason,
@@ -93,6 +101,7 @@ export class ShiftsService {
     });
 
     await this.assertSiteAssignable(organisationId, dto.siteId);
+    const recurrence = this.normaliseRecurrence(dto);
 
     const shift = await this.prisma.shift.create({
       data: {
@@ -108,6 +117,10 @@ export class ShiftsService {
         instructions: trimOrUndefined(dto.instructions) ?? null,
         status: dto.asDraft ? ShiftStatus.DRAFT : ShiftStatus.SCHEDULED,
         createdByUserId: user.id,
+        recurrenceType: recurrence.recurrenceType,
+        recurrenceEndAt: recurrence.recurrenceEndAt,
+        recurrenceDaysOfWeek: recurrence.recurrenceDaysOfWeek,
+        timezone: recurrence.timezone,
       },
       include: SHIFT_INCLUDE,
     });
@@ -157,7 +170,9 @@ export class ShiftsService {
               AND: [
                 {
                   OR: [
-                    { supervisorId: scope.supervisorProfileId || SCOPE_NIL_UUID },
+                    {
+                      supervisorId: scope.supervisorProfileId || SCOPE_NIL_UUID,
+                    },
                     ...(scope.officerIds.length > 0
                       ? [{ officerId: { in: scope.officerIds } }]
                       : []),
@@ -276,7 +291,9 @@ export class ShiftsService {
               assignments: {
                 some: {
                   OR: [
-                    { supervisorId: scope.supervisorProfileId || SCOPE_NIL_UUID },
+                    {
+                      supervisorId: scope.supervisorProfileId || SCOPE_NIL_UUID,
+                    },
                     ...(scope.officerIds.length > 0
                       ? [{ officerId: { in: scope.officerIds } }]
                       : []),
@@ -380,6 +397,11 @@ export class ShiftsService {
             scheduledEndAt: true,
             siteId: true,
             gracePeriodMinutes: true,
+            unpaidBreakMinutes: true,
+            recurrenceType: true,
+            recurrenceEndAt: true,
+            recurrenceDaysOfWeek: true,
+            timezone: true,
             site: {
               select: {
                 id: true,
@@ -488,6 +510,20 @@ export class ShiftsService {
       );
     }
 
+    const recurrence = this.normaliseRecurrence({
+      recurrenceType: dto.recurrenceType ?? existing.recurrenceType,
+      recurrenceEndAt:
+        dto.recurrenceEndAt === undefined
+          ? existing.recurrenceEndAt?.toISOString()
+          : (dto.recurrenceEndAt ?? undefined),
+      recurrenceDaysOfWeek:
+        dto.recurrenceDaysOfWeek ?? existing.recurrenceDaysOfWeek,
+      timezone:
+        dto.timezone === undefined
+          ? (existing.timezone ?? undefined)
+          : (dto.timezone ?? undefined),
+    });
+
     const updated = await this.prisma.shift.update({
       where: { id: existing.id },
       data: {
@@ -507,6 +543,18 @@ export class ShiftsService {
           : {}),
         ...(dto.instructions !== undefined
           ? { instructions: trimOrUndefined(dto.instructions) ?? null }
+          : {}),
+        ...(dto.recurrenceType !== undefined
+          ? { recurrenceType: recurrence.recurrenceType }
+          : {}),
+        ...(dto.recurrenceEndAt !== undefined
+          ? { recurrenceEndAt: recurrence.recurrenceEndAt }
+          : {}),
+        ...(dto.recurrenceDaysOfWeek !== undefined
+          ? { recurrenceDaysOfWeek: recurrence.recurrenceDaysOfWeek }
+          : {}),
+        ...(dto.timezone !== undefined
+          ? { timezone: recurrence.timezone }
           : {}),
       },
       include: SHIFT_INCLUDE,
@@ -736,5 +784,88 @@ export class ShiftsService {
         }
       }
     }
+  }
+
+  private normaliseRecurrence(dto: {
+    recurrenceType?: RecurrenceType;
+    recurrenceEndAt?: string | Date | null;
+    recurrenceDaysOfWeek?: number[];
+    timezone?: string | null;
+  }) {
+    const recurrenceType = dto.recurrenceType ?? RecurrenceType.NONE;
+    const recurrenceDaysOfWeek = normaliseDaysOfWeek(dto.recurrenceDaysOfWeek);
+    const timezone = trimOrUndefined(dto.timezone) ?? null;
+    if (timezone && !isValidTimeZone(timezone)) {
+      throw new AppException(
+        'Invalid IANA timezone',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.SHIFT_TIME_RANGE_INVALID,
+      );
+    }
+    if (
+      recurrenceType === RecurrenceType.CUSTOM_WEEKDAYS &&
+      recurrenceDaysOfWeek.length === 0
+    ) {
+      throw new AppException(
+        'CUSTOM_WEEKDAYS recurrence requires at least one day of week',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.SHIFT_TIME_RANGE_INVALID,
+      );
+    }
+    const recurrenceEndAt = this.parseRecurrenceEndAt(
+      dto.recurrenceEndAt,
+      resolveTimeZone(timezone),
+    );
+    if (
+      !isRecurringShift(recurrenceType) &&
+      recurrenceType !== RecurrenceType.NONE
+    ) {
+      throw new AppException(
+        'Unsupported recurrence type',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.SHIFT_TIME_RANGE_INVALID,
+      );
+    }
+    return {
+      recurrenceType,
+      recurrenceEndAt: isRecurringShift(recurrenceType)
+        ? recurrenceEndAt
+        : null,
+      recurrenceDaysOfWeek:
+        recurrenceType === RecurrenceType.DAILY ? [] : recurrenceDaysOfWeek,
+      timezone,
+    };
+  }
+
+  private parseRecurrenceEndAt(
+    value: string | Date | null | undefined,
+    timeZone: string,
+  ): Date | null {
+    if (value == null || value === '') {
+      return null;
+    }
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) {
+        throw new AppException(
+          'Invalid recurrence end date',
+          HttpStatus.BAD_REQUEST,
+          ErrorCode.SHIFT_TIME_RANGE_INVALID,
+        );
+      }
+      return value;
+    }
+    const raw = String(value).trim();
+    if (parseDateKey(raw)) {
+      return endOfZonedDay(raw, timeZone);
+    }
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new AppException(
+        'Invalid recurrence end date',
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.SHIFT_TIME_RANGE_INVALID,
+      );
+    }
+    return parsed;
   }
 }

@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import {
@@ -54,6 +54,16 @@ import type { ListAttendanceQueryDto } from './dto/list-attendance-query.dto';
 import type { ListMyAttendanceQueryDto } from './dto/list-my-attendance-query.dto';
 import { GeofenceService } from './geofence.service';
 import { toAttendanceResponse } from './mappers/attendance.mapper';
+import {
+  currentOccurrence,
+  isRecurringShift,
+  occurrenceOnDate,
+} from '../shifts/shift-recurrence.util';
+import {
+  dateKeyToUtcDate,
+  resolveTimeZone,
+  zonedDateKey,
+} from '../../common/utils/timezone.util';
 
 const ATTENDANCE_SORT_FIELDS = [
   'clockInServerAt',
@@ -137,6 +147,8 @@ const ATTENDANCE_INCLUDE = {
 
 @Injectable()
 export class AttendanceService {
+  private readonly logger = new Logger(AttendanceService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -652,7 +664,8 @@ export class AttendanceService {
 
     // Backfill attendanceId for selfies uploaded before linking existed.
     const unlinked = rows.filter(
-      (row) => row.attendanceId !== attendance.id && evidenceIds.includes(row.id),
+      (row) =>
+        row.attendanceId !== attendance.id && evidenceIds.includes(row.id),
     );
     if (unlinked.length) {
       await this.prisma.evidence.updateMany({
@@ -949,6 +962,7 @@ export class AttendanceService {
         shift: {
           include: {
             site: true,
+            organisation: { select: { timezone: true } },
           },
         },
       },
@@ -959,13 +973,59 @@ export class AttendanceService {
     }
 
     if (
+      assignment.isActive === false ||
       assignment.status === AssignmentStatus.CANCELLED ||
       assignment.status === AssignmentStatus.REASSIGNED ||
       assignment.status === AssignmentStatus.MISSED ||
-      assignment.status === AssignmentStatus.COMPLETED
+      (assignment.status === AssignmentStatus.COMPLETED &&
+        !isRecurringShift(assignment.shift.recurrenceType))
     ) {
       throw new AppException(
         'Assignment is not valid for clock-in',
+        HttpStatus.CONFLICT,
+        ErrorCode.ASSIGNMENT_NOT_CURRENT,
+      );
+    }
+
+    const shift = assignment.shift;
+    const site = shift.site;
+    const timeZone = resolveTimeZone(
+      shift.timezone,
+      shift.organisation?.timezone,
+    );
+    const earlyMinutes =
+      this.configService.get<number>('attendance.clockInEarlyMinutes') ?? 30;
+    const occurrence =
+      currentOccurrence(
+        {
+          recurrenceType: shift.recurrenceType,
+          scheduledStartAt: shift.scheduledStartAt,
+          scheduledEndAt: shift.scheduledEndAt,
+          recurrenceEndAt: shift.recurrenceEndAt,
+          recurrenceDaysOfWeek: shift.recurrenceDaysOfWeek,
+          timezone: shift.timezone,
+          organisationTimezone: shift.organisation?.timezone,
+        },
+        serverNow,
+        earlyMinutes * 60_000,
+        shift.gracePeriodMinutes * 60_000,
+      ) ??
+      occurrenceOnDate(
+        {
+          recurrenceType: shift.recurrenceType,
+          scheduledStartAt: shift.scheduledStartAt,
+          scheduledEndAt: shift.scheduledEndAt,
+          recurrenceEndAt: shift.recurrenceEndAt,
+          recurrenceDaysOfWeek: shift.recurrenceDaysOfWeek,
+          timezone: shift.timezone,
+          organisationTimezone: shift.organisation?.timezone,
+        },
+        zonedDateKey(serverNow, timeZone),
+      );
+
+    if (!occurrence) {
+      throw new AppException(
+        'No assignment occurrence is available for clock-in now',
         HttpStatus.CONFLICT,
         ErrorCode.ASSIGNMENT_NOT_CURRENT,
       );
@@ -975,6 +1035,7 @@ export class AttendanceService {
       where: {
         organisationId,
         assignmentId: assignment.id,
+        occurrenceDate: dateKeyToUtcDate(occurrence.dateKey),
         deletedAt: null,
       },
     });
@@ -986,12 +1047,8 @@ export class AttendanceService {
       );
     }
 
-    const shift = assignment.shift;
-    const site = shift.site;
-    const earlyMinutes =
-      this.configService.get<number>('attendance.clockInEarlyMinutes') ?? 30;
     const earliest = new Date(
-      shift.scheduledStartAt.getTime() - earlyMinutes * 60_000,
+      occurrence.startAt.getTime() - earlyMinutes * 60_000,
     );
 
     if (serverNow < earliest) {
@@ -1001,7 +1058,7 @@ export class AttendanceService {
         ErrorCode.ATTENDANCE_CLOCK_IN_TOO_EARLY,
       );
     }
-    if (serverNow > shift.scheduledEndAt) {
+    if (serverNow > occurrence.endAt) {
       throw new AppException(
         'Shift has already ended',
         HttpStatus.CONFLICT,
@@ -1009,7 +1066,11 @@ export class AttendanceService {
       );
     }
 
-    if (dto.accuracyMeters > Number(site.minimumGpsAccuracyMeters)) {
+    const geofenceEnabled = this.isGeofenceEnforcementEnabled();
+    if (
+      geofenceEnabled &&
+      dto.accuracyMeters > Number(site.minimumGpsAccuracyMeters)
+    ) {
       throw new AppException(
         'GPS accuracy is too low',
         HttpStatus.BAD_REQUEST,
@@ -1025,7 +1086,11 @@ export class AttendanceService {
       );
     }
     if (site.requiresClockInSelfie && dto.evidenceId) {
-      await this.assertSelfieEvidenceOwned(organisationId, user.id, dto.evidenceId);
+      await this.assertSelfieEvidenceOwned(
+        organisationId,
+        user.id,
+        dto.evidenceId,
+      );
     }
 
     const distanceMeters = this.geofenceService.distanceMeters(
@@ -1034,12 +1099,22 @@ export class AttendanceService {
       dto.latitude,
       dto.longitude,
     );
-    const geofence = this.geofenceService.evaluateGeofence({
-      distanceMeters,
-      radiusMeters: site.clockInRadiusMeters,
-      policy: site.clockInOutsideGeofencePolicy,
-      reason: dto.reason,
-    });
+    const geofence = geofenceEnabled
+      ? this.geofenceService.evaluateGeofence({
+          distanceMeters,
+          radiusMeters: site.clockInRadiusMeters,
+          policy: site.clockInOutsideGeofencePolicy,
+          reason: dto.reason,
+        })
+      : {
+          allowed: true,
+          requiresReview: false,
+          outside: distanceMeters > site.clockInRadiusMeters,
+        };
+
+    if (!geofenceEnabled) {
+      this.logger.log('Clock-in allowed with geofence enforcement disabled');
+    }
 
     if (!geofence.allowed) {
       const reasonMissing =
@@ -1057,7 +1132,7 @@ export class AttendanceService {
     }
 
     let status: AttendanceStatus = AttendanceStatus.CLOCKED_IN;
-    if (geofence.outside && geofence.requiresReview) {
+    if (geofenceEnabled && geofence.outside && geofence.requiresReview) {
       status =
         site.clockInOutsideGeofencePolicy === GeofencePolicy.ALLOW_WITH_REASON
           ? AttendanceStatus.APPROVED_WITH_WARNING
@@ -1065,7 +1140,7 @@ export class AttendanceService {
     }
 
     const graceEnd = new Date(
-      shift.scheduledStartAt.getTime() + shift.gracePeriodMinutes * 60_000,
+      occurrence.startAt.getTime() + shift.gracePeriodMinutes * 60_000,
     );
     const lateMinutes =
       serverNow > graceEnd
@@ -1077,6 +1152,7 @@ export class AttendanceService {
         data: {
           organisationId,
           assignmentId: assignment.id,
+          occurrenceDate: dateKeyToUtcDate(occurrence.dateKey),
           officerId,
           shiftId: shift.id,
           siteId: site.id,
@@ -1088,6 +1164,7 @@ export class AttendanceService {
           clockInAccuracyMeters: new Prisma.Decimal(dto.accuracyMeters),
           clockInDistanceMeters: new Prisma.Decimal(distanceMeters),
           clockInOutsideGeofence: geofence.outside,
+          geofenceEnforcementDisabled: !geofenceEnabled,
           clockInReason: trimOrUndefined(dto.reason) ?? null,
           clockInEvidenceId: dto.evidenceId ?? null,
           lateMinutes,
@@ -1110,6 +1187,9 @@ export class AttendanceService {
           accuracyMeters: new Prisma.Decimal(dto.accuracyMeters),
           distanceMeters: new Prisma.Decimal(distanceMeters),
           reason: trimOrUndefined(dto.reason) ?? null,
+          metadata: geofenceEnabled
+            ? undefined
+            : { geofenceEnforcementDisabled: true },
         },
       });
 
@@ -1147,7 +1227,10 @@ export class AttendanceService {
         });
       }
 
-      if (shift.status === ShiftStatus.SCHEDULED) {
+      if (
+        shift.status === ShiftStatus.SCHEDULED &&
+        !isRecurringShift(shift.recurrenceType)
+      ) {
         await tx.shift.update({
           where: { id: shift.id },
           data: { status: ShiftStatus.IN_PROGRESS },
@@ -1166,6 +1249,7 @@ export class AttendanceService {
         metadata: {
           action: 'clock-in',
           outsideGeofence: geofence.outside,
+          geofenceEnforcementDisabled: !geofenceEnabled,
           status,
         },
       },
@@ -1195,7 +1279,11 @@ export class AttendanceService {
         deletedAt: null,
       },
       include: {
-        shift: true,
+        shift: {
+          include: {
+            organisation: { select: { timezone: true } },
+          },
+        },
         site: true,
         assignment: true,
         breaks: true,
@@ -1226,7 +1314,11 @@ export class AttendanceService {
     }
 
     const site = attendance.site;
-    if (dto.accuracyMeters > Number(site.minimumGpsAccuracyMeters)) {
+    const geofenceEnabled = this.isGeofenceEnforcementEnabled();
+    if (
+      geofenceEnabled &&
+      dto.accuracyMeters > Number(site.minimumGpsAccuracyMeters)
+    ) {
       throw new AppException(
         'GPS accuracy is too low',
         HttpStatus.BAD_REQUEST,
@@ -1242,7 +1334,11 @@ export class AttendanceService {
       );
     }
     if (site.requiresClockOutSelfie && dto.evidenceId) {
-      await this.assertSelfieEvidenceOwned(organisationId, user.id, dto.evidenceId);
+      await this.assertSelfieEvidenceOwned(
+        organisationId,
+        user.id,
+        dto.evidenceId,
+      );
     }
 
     if (site.requiresFinalShiftNote && !trimOrUndefined(dto.finalShiftNote)) {
@@ -1259,12 +1355,22 @@ export class AttendanceService {
       dto.latitude,
       dto.longitude,
     );
-    const geofence = this.geofenceService.evaluateGeofence({
-      distanceMeters,
-      radiusMeters: site.clockOutRadiusMeters,
-      policy: site.clockOutOutsideGeofencePolicy,
-      reason: dto.reason,
-    });
+    const geofence = geofenceEnabled
+      ? this.geofenceService.evaluateGeofence({
+          distanceMeters,
+          radiusMeters: site.clockOutRadiusMeters,
+          policy: site.clockOutOutsideGeofencePolicy,
+          reason: dto.reason,
+        })
+      : {
+          allowed: true,
+          requiresReview: false,
+          outside: distanceMeters > site.clockOutRadiusMeters,
+        };
+
+    if (!geofenceEnabled) {
+      this.logger.log('Clock-out allowed with geofence enforcement disabled');
+    }
 
     if (!geofence.allowed) {
       const reasonMissing =
@@ -1282,7 +1388,7 @@ export class AttendanceService {
     }
 
     let nextStatus: AttendanceStatus = AttendanceStatus.CLOCKED_OUT;
-    if (geofence.outside && geofence.requiresReview) {
+    if (geofenceEnabled && geofence.outside && geofence.requiresReview) {
       nextStatus = AttendanceStatus.PENDING_SUPERVISOR_APPROVAL;
     }
     assertAttendanceTransition(attendance.status, nextStatus);
@@ -1292,11 +1398,37 @@ export class AttendanceService {
       .filter((b) => b.status === BreakStatus.COMPLETED)
       .reduce((sum, b) => sum + (b.durationMinutes ?? 0), 0);
 
+    const occurrenceDateKey = attendance.occurrenceDate
+      ? attendance.occurrenceDate.toISOString().slice(0, 10)
+      : zonedDateKey(
+          clockInServerAt,
+          resolveTimeZone(
+            attendance.shift.timezone,
+            attendance.shift.organisation?.timezone,
+          ),
+        );
+    const occurrence = occurrenceOnDate(
+      {
+        recurrenceType: attendance.shift.recurrenceType,
+        scheduledStartAt: attendance.shift.scheduledStartAt,
+        scheduledEndAt: attendance.shift.scheduledEndAt,
+        recurrenceEndAt: attendance.shift.recurrenceEndAt,
+        recurrenceDaysOfWeek: attendance.shift.recurrenceDaysOfWeek,
+        timezone: attendance.shift.timezone,
+        organisationTimezone: attendance.shift.organisation?.timezone,
+      },
+      occurrenceDateKey,
+    ) ?? {
+      startAt: attendance.shift.scheduledStartAt,
+      endAt: attendance.shift.scheduledEndAt,
+      dateKey: occurrenceDateKey,
+    };
+
     const totals = this.calculationService.calculateTotals({
       clockInServerAt,
       clockOutServerAt: serverNow,
-      scheduledStartAt: attendance.shift.scheduledStartAt,
-      scheduledEndAt: attendance.shift.scheduledEndAt,
+      scheduledStartAt: occurrence.startAt,
+      scheduledEndAt: occurrence.endAt,
       gracePeriodMinutes: attendance.shift.gracePeriodMinutes,
       unpaidBreakMinutes: attendance.shift.unpaidBreakMinutes,
       overtimeThresholdMinutes: attendance.shift.overtimeThresholdMinutes,
@@ -1315,6 +1447,7 @@ export class AttendanceService {
           clockOutAccuracyMeters: new Prisma.Decimal(dto.accuracyMeters),
           clockOutDistanceMeters: new Prisma.Decimal(distanceMeters),
           clockOutOutsideGeofence: geofence.outside,
+          geofenceEnforcementDisabled: !geofenceEnabled,
           clockOutReason: trimOrUndefined(dto.reason) ?? null,
           clockOutEvidenceId: dto.evidenceId ?? null,
           finalShiftNote: trimOrUndefined(dto.finalShiftNote) ?? null,
@@ -1355,7 +1488,10 @@ export class AttendanceService {
         });
       }
 
-      if (attendance.assignment.status === AssignmentStatus.IN_PROGRESS) {
+      if (
+        attendance.assignment.status === AssignmentStatus.IN_PROGRESS &&
+        !isRecurringShift(attendance.shift.recurrenceType)
+      ) {
         await tx.assignment.update({
           where: { id: attendance.assignmentId },
           data: {
@@ -1370,6 +1506,25 @@ export class AttendanceService {
             previousStatus: AssignmentStatus.IN_PROGRESS,
             newStatus: AssignmentStatus.COMPLETED,
             reason: 'Clock-out',
+          },
+        });
+      } else if (
+        attendance.assignment.status === AssignmentStatus.IN_PROGRESS &&
+        isRecurringShift(attendance.shift.recurrenceType)
+      ) {
+        await tx.assignment.update({
+          where: { id: attendance.assignmentId },
+          data: {
+            status: AssignmentStatus.CONFIRMED,
+          },
+        });
+        await tx.assignmentEvent.create({
+          data: {
+            assignmentId: attendance.assignmentId,
+            actorUserId: user.id,
+            previousStatus: AssignmentStatus.IN_PROGRESS,
+            newStatus: AssignmentStatus.CONFIRMED,
+            reason: 'Clock-out (recurring assignment remains active)',
           },
         });
       }
@@ -1456,6 +1611,12 @@ export class AttendanceService {
     );
 
     return toAttendanceResponse(updated);
+  }
+
+  private isGeofenceEnforcementEnabled(): boolean {
+    return (
+      this.configService.get<boolean>('attendance.geofenceEnabled') ?? true
+    );
   }
 
   private assertDeviceTimeTolerance(deviceAt: Date, serverAt: Date): void {

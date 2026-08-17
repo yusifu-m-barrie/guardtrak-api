@@ -22,7 +22,7 @@ describe('AttendanceCalculationService', () => {
     expect(result).toEqual({
       grossMinutes: 480,
       totalBreakMinutes: 25,
-      payableMinutes: 450,
+      payableMinutes: 455,
       overtimeMinutes: 0,
       lateMinutes: 0,
       earlyDepartureMinutes: 0,
@@ -39,7 +39,7 @@ describe('AttendanceCalculationService', () => {
     });
 
     expect(result.grossMinutes).toBe(720);
-    expect(result.payableMinutes).toBe(690);
+    expect(result.payableMinutes).toBe(695);
     expect(result.overtimeMinutes).toBe(0);
   });
 
@@ -52,7 +52,7 @@ describe('AttendanceCalculationService', () => {
 
     expect(result.lateMinutes).toBe(5);
     expect(result.grossMinutes).toBe(460);
-    expect(result.payableMinutes).toBe(430);
+    expect(result.payableMinutes).toBe(435);
   });
 
   it('calculates early departure minutes', () => {
@@ -64,7 +64,7 @@ describe('AttendanceCalculationService', () => {
 
     expect(result.earlyDepartureMinutes).toBe(30);
     expect(result.grossMinutes).toBe(450);
-    expect(result.payableMinutes).toBe(420);
+    expect(result.payableMinutes).toBe(425);
   });
 
   it('calculates overtime beyond scheduled duration and threshold', () => {
@@ -77,7 +77,33 @@ describe('AttendanceCalculationService', () => {
 
     expect(result.grossMinutes).toBe(540);
     expect(result.overtimeMinutes).toBe(30);
-    expect(result.payableMinutes).toBe(510);
+    expect(result.payableMinutes).toBe(515);
+  });
+
+  it('uses actual breaks for an 8-hour shift with a 60-minute break', () => {
+    const result = service.calculateTotals({
+      ...baseInput,
+      scheduledStartAt: new Date('2026-08-17T12:00:00.000Z'),
+      scheduledEndAt: new Date('2026-08-17T21:00:00.000Z'),
+      unpaidBreakMinutes: 60,
+      completedBreakMinutes: 60,
+      clockInServerAt: new Date('2026-08-17T12:00:00.000Z'),
+      clockOutServerAt: new Date('2026-08-17T21:00:00.000Z'),
+    });
+    expect(result.grossMinutes).toBe(540);
+    expect(result.totalBreakMinutes).toBe(60);
+    expect(result.payableMinutes).toBe(480);
+  });
+
+  it('sums multiple completed breaks before subtracting', () => {
+    const result = service.calculateTotals({
+      ...baseInput,
+      completedBreakMinutes: 15 + 20 + 10,
+      clockInServerAt: new Date('2026-07-18T08:00:00.000Z'),
+      clockOutServerAt: new Date('2026-07-18T16:00:00.000Z'),
+    });
+    expect(result.totalBreakMinutes).toBe(45);
+    expect(result.payableMinutes).toBe(435);
   });
 
   it('clamps negative derived values to zero', () => {
@@ -85,8 +111,8 @@ describe('AttendanceCalculationService', () => {
       ...baseInput,
       clockInServerAt: new Date('2026-07-18T07:45:00.000Z'),
       clockOutServerAt: new Date('2026-07-18T16:30:00.000Z'),
-      unpaidBreakMinutes: 600,
-      completedBreakMinutes: 0,
+      unpaidBreakMinutes: 0,
+      completedBreakMinutes: 600,
     });
 
     expect(result.payableMinutes).toBe(0);
@@ -133,6 +159,16 @@ describe('AttendanceCalculationService', () => {
       });
       expect(workedSeconds).toBe(26100);
       expect(service.roundHoursFromSeconds(workedSeconds)).toBe(7.25);
+    });
+
+    it('returns zero worked time when clock-out is missing', () => {
+      const workedSeconds = service.calculateWorkedSeconds({
+        clockInServerAt: new Date('2026-07-18T08:00:00.000Z'),
+        clockOutServerAt: null,
+        breakMinutes: 30,
+      });
+      expect(workedSeconds).toBe(0);
+      expect(service.roundHoursFromSeconds(workedSeconds)).toBe(0);
     });
 
     it('returns zero for invalid clock-out before clock-in', () => {

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateAssignmentDto {
   @ApiProperty({ format: 'uuid' })
@@ -14,4 +14,10 @@ export class CreateAssignmentDto {
   @IsOptional()
   @IsUUID('4')
   supervisorId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
 }

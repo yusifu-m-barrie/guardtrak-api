@@ -206,7 +206,7 @@ describeDb('PostgreSQL schema constraints (local DB via pg)', () => {
     );
   });
 
-  it('enforces one attendance per assignment and storageKey uniqueness', async () => {
+  it('enforces one attendance per assignment occurrence date and storageKey uniqueness', async () => {
     const hash = await argon2.hash('ConstraintTest!1');
     const adminId = randomUUID();
     const officerUserId = randomUUID();
@@ -252,15 +252,21 @@ describeDb('PostgreSQL schema constraints (local DB via pg)', () => {
       [assignmentId, orgId, shiftId, officerId, adminId],
     );
     await pool.query(
-      `INSERT INTO attendances (id, "organisationId", "assignmentId", "officerId", "shiftId", "siteId", status, "clockInOutsideGeofence", "clockOutOutsideGeofence", "totalBreakMinutes", "createdAt", "updatedAt")
-       VALUES ($1,$2,$3,$4,$5,$6,'PENDING', false, false, 0, NOW(), NOW())`,
+      `INSERT INTO attendances (id, "organisationId", "assignmentId", "officerId", "shiftId", "siteId", status, "occurrenceDate", "clockInOutsideGeofence", "clockOutOutsideGeofence", "totalBreakMinutes", "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,'PENDING', DATE '2026-08-17', false, false, 0, NOW(), NOW())`,
+      [randomUUID(), orgId, assignmentId, officerId, shiftId, siteId],
+    );
+
+    await pool.query(
+      `INSERT INTO attendances (id, "organisationId", "assignmentId", "officerId", "shiftId", "siteId", status, "occurrenceDate", "clockInOutsideGeofence", "clockOutOutsideGeofence", "totalBreakMinutes", "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,'PENDING', DATE '2026-08-18', false, false, 0, NOW(), NOW())`,
       [randomUUID(), orgId, assignmentId, officerId, shiftId, siteId],
     );
 
     await expectUniqueViolation(() =>
       pool.query(
-        `INSERT INTO attendances (id, "organisationId", "assignmentId", "officerId", "shiftId", "siteId", status, "clockInOutsideGeofence", "clockOutOutsideGeofence", "totalBreakMinutes", "createdAt", "updatedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,'PENDING', false, false, 0, NOW(), NOW())`,
+        `INSERT INTO attendances (id, "organisationId", "assignmentId", "officerId", "shiftId", "siteId", status, "occurrenceDate", "clockInOutsideGeofence", "clockOutOutsideGeofence", "totalBreakMinutes", "createdAt", "updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,'PENDING', DATE '2026-08-17', false, false, 0, NOW(), NOW())`,
         [randomUUID(), orgId, assignmentId, officerId, shiftId, siteId],
       ),
     );
@@ -302,7 +308,13 @@ describeDb('PostgreSQL schema constraints (local DB via pg)', () => {
       `SELECT id FROM assignments WHERE "organisationId" = $1 LIMIT 1`,
       [orgId],
     );
-    if (!admin.rows[0] || !officer.rows[0] || !site.rows[0] || !shift.rows[0] || !assignment.rows[0]) {
+    if (
+      !admin.rows[0] ||
+      !officer.rows[0] ||
+      !site.rows[0] ||
+      !shift.rows[0] ||
+      !assignment.rows[0]
+    ) {
       throw new Error(
         'Expected seed rows from prior constraint tests (admin/officer/site/shift/assignment)',
       );

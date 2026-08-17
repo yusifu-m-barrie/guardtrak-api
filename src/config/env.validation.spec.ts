@@ -20,6 +20,7 @@ describe('validateEnv', () => {
     expect(validated.PORT).toBe(4000);
     expect(validated.RATE_LIMIT_LIMIT).toBe(50);
     expect(validated.API_PREFIX).toBe('api/v1');
+    expect(validated.ATTENDANCE_GEOFENCE_ENABLED).toBe(false);
   });
 
   it('rejects missing DATABASE_URL', () => {

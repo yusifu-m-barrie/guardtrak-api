@@ -20,6 +20,13 @@ import {
 } from './dto/attendance-hours-query.dto';
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
 import { normalisePagination } from '../../common/utils/pagination.util';
+import {
+  endOfZonedDay,
+  parseDateKey,
+  startOfZonedDay,
+  zonedDateKey,
+} from '../../common/utils/timezone.util';
+import { expandOccurrences } from '../shifts/shift-recurrence.util';
 
 type AttendanceReportRecord = {
   id: string;
@@ -47,7 +54,7 @@ type AttendanceReportRecord = {
     } | null;
   } | null;
   site: { name: string; code: string } | null;
-  shift: { title: string } | null;
+  shift: { title: string; scheduledStartAt: Date; scheduledEndAt: Date } | null;
   assignment: { supervisorId: string | null } | null;
 };
 
@@ -167,8 +174,13 @@ export class ReportsService {
       user,
       organisationId,
     );
-    const fromDate = this.parseRangeStart(query.from);
-    const toDate = this.parseRangeEnd(query.to);
+    const organisation = await this.prisma.organisation.findFirst({
+      where: { id: organisationId, deletedAt: null },
+      select: { id: true, name: true, timezone: true },
+    });
+    const timeZone = organisation?.timezone ?? 'UTC';
+    const fromDate = this.parseRangeStart(query.from, timeZone);
+    const toDate = this.parseRangeEnd(query.to, timeZone);
     const reportType = this.resolveReportType(query.reportType);
     const hoursBasis = this.resolveHoursBasis(query.hoursBasis);
     const officerIds = this.resolveOfficerIds(query);
@@ -252,24 +264,37 @@ export class ReportsService {
           },
         },
         site: { select: { name: true, code: true } },
-        shift: { select: { title: true } },
+        shift: {
+          select: { title: true, scheduledStartAt: true, scheduledEndAt: true },
+        },
         assignment: { select: { supervisorId: true } },
       },
     })) as AttendanceReportRecord[];
 
     const detailRows = records.map((record) =>
-      this.toDetailRow(record, hoursBasis),
+      this.toDetailRow(record, hoursBasis, timeZone),
     );
 
     const summary = this.buildSummary(detailRows);
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
     const formula =
       hoursBasis === 'payable'
-        ? 'payableMinutes (fallback: clockOut - clockIn - breaks)'
+        ? 'workedMinutes = (clockOut - clockIn) - totalBreakMinutes; hours = minutes / 60'
         : 'clockOut - clockIn (gross)';
 
     const base = {
-      range: { from: fromDate.toISOString(), to: toDate.toISOString() },
+      range: {
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        timezone: timeZone,
+      },
+      organisation: organisation
+        ? {
+            id: organisation.id,
+            name: organisation.name,
+            timezone: timeZone,
+          }
+        : null,
       filters: {
         officerIds,
         siteId: query.siteId ?? null,
@@ -332,6 +357,23 @@ export class ReportsService {
       };
     }
 
+    if (reportType === 'payroll-summary') {
+      const payroll = await this.buildPayrollSummary({
+        organisationId,
+        timeZone,
+        fromDate,
+        toDate,
+        detailRows,
+        query,
+        officerScope,
+      });
+      return {
+        ...base,
+        rows: this.buildOfficerSiteBreakdown(detailRows),
+        payroll,
+      };
+    }
+
     return {
       ...base,
       rows: this.buildOfficerSiteBreakdown(detailRows),
@@ -359,7 +401,7 @@ export class ReportsService {
       hoursBasis,
       formula:
         hoursBasis === 'payable'
-          ? 'payableMinutes (fallback: clockOut - clockIn - breaks)'
+          ? 'workedMinutes = (clockOut - clockIn) - totalBreakMinutes; hours = minutes / 60'
           : 'clockOut - clockIn (gross)',
       summary: {
         totalOfficers: 0,
@@ -409,23 +451,24 @@ export class ReportsService {
     return [...new Set(ids.filter(Boolean))];
   }
 
-  private parseRangeStart(value: string): Date {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return new Date(`${value}T00:00:00.000`);
+  private parseRangeStart(value: string, timeZone: string): Date {
+    if (parseDateKey(value)) {
+      return startOfZonedDay(value, timeZone);
     }
     return new Date(value);
   }
 
-  private parseRangeEnd(value: string): Date {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return new Date(`${value}T23:59:59.999`);
+  private parseRangeEnd(value: string, timeZone: string): Date {
+    if (parseDateKey(value)) {
+      return endOfZonedDay(value, timeZone);
     }
     return new Date(value);
   }
 
   /**
-   * Gross hours = clockOut - clockIn.
-   * Payable hours = stored payableMinutes when present, else gross - breaks.
+   * Gross seconds = actual clockOut - clockIn.
+   * Payable seconds = gross - actual break minutes.
+   * Stored minute fields are not used for payroll totals (they lose seconds).
    */
   private computeWorkedSeconds(record: {
     clockInServerAt: Date | null;
@@ -455,14 +498,8 @@ export class ReportsService {
       ? Math.max(0, (clockOut!.getTime() - clockIn!.getTime()) / 1000)
       : 0;
     const breakSeconds = Math.max(0, (record.totalBreakMinutes ?? 0) * 60);
-    const grossSeconds =
-      record.grossMinutes != null && Number.isFinite(record.grossMinutes)
-        ? Math.max(0, record.grossMinutes * 60)
-        : attendanceSeconds;
-    const payableSeconds =
-      record.payableMinutes != null && Number.isFinite(record.payableMinutes)
-        ? Math.max(0, record.payableMinutes * 60)
-        : Math.max(0, grossSeconds - breakSeconds);
+    const grossSeconds = attendanceSeconds;
+    const payableSeconds = Math.max(0, grossSeconds - breakSeconds);
     const overtimeSeconds =
       record.overtimeMinutes != null && Number.isFinite(record.overtimeMinutes)
         ? Math.max(0, record.overtimeMinutes * 60)
@@ -490,10 +527,11 @@ export class ReportsService {
   private toDetailRow(
     record: AttendanceReportRecord,
     hoursBasis: AttendanceHoursBasis,
+    timeZone: string,
   ) {
     const calc = this.computeWorkedSeconds(record);
     const dayKey = record.clockInServerAt
-      ? record.clockInServerAt.toISOString().slice(0, 10)
+      ? zonedDateKey(record.clockInServerAt, timeZone)
       : '';
     const workedSeconds =
       hoursBasis === 'gross' ? calc.grossSeconds : calc.payableSeconds;
@@ -507,6 +545,8 @@ export class ReportsService {
       siteName: record.site?.name ?? record.site?.code ?? 'Unknown site',
       shiftId: record.shiftId,
       shiftTitle: record.shift?.title ?? 'Unknown shift',
+      shiftStartAt: record.shift?.scheduledStartAt?.toISOString() ?? null,
+      shiftEndAt: record.shift?.scheduledEndAt?.toISOString() ?? null,
       supervisorId: record.assignment?.supervisorId ?? null,
       status: record.status,
       clockInAt: record.clockInServerAt?.toISOString() ?? null,
@@ -534,9 +574,8 @@ export class ReportsService {
       overtimeHours: this.attendanceCalculation.roundHoursFromSeconds(
         calc.overtimeSeconds,
       ),
-      workedHours: this.attendanceCalculation.roundHoursFromSeconds(
-        workedSeconds,
-      ),
+      workedHours:
+        this.attendanceCalculation.roundHoursFromSeconds(workedSeconds),
       valid: calc.valid,
     };
   }
@@ -1016,6 +1055,117 @@ export class ReportsService {
       organisationId,
       supervisorProfileId,
     );
+  }
+
+  private async buildPayrollSummary(input: {
+    organisationId: string;
+    timeZone: string;
+    fromDate: Date;
+    toDate: Date;
+    detailRows: ReturnType<ReportsService['toDetailRow']>[];
+    query: AttendanceHoursQueryDto;
+    officerScope: string[] | null;
+  }) {
+    const assignments = await this.prisma.assignment.findMany({
+      where: {
+        organisationId: input.organisationId,
+        isActive: true,
+        ...(input.officerScope
+          ? { officerId: { in: input.officerScope } }
+          : {}),
+        ...(input.query.officerId || input.query.officerIds?.length
+          ? {
+              officerId: {
+                in: [
+                  ...(input.query.officerId ? [input.query.officerId] : []),
+                  ...(input.query.officerIds ?? []),
+                ],
+              },
+            }
+          : {}),
+        ...(input.query.shiftId ? { shiftId: input.query.shiftId } : {}),
+        ...(input.query.supervisorId
+          ? { supervisorId: input.query.supervisorId }
+          : {}),
+        shift: {
+          deletedAt: null,
+          ...(input.query.siteId ? { siteId: input.query.siteId } : {}),
+        },
+      },
+      select: {
+        id: true,
+        officerId: true,
+        shift: {
+          select: {
+            scheduledStartAt: true,
+            scheduledEndAt: true,
+            recurrenceType: true,
+            recurrenceEndAt: true,
+            recurrenceDaysOfWeek: true,
+            timezone: true,
+            organisation: { select: { timezone: true } },
+          },
+        },
+      },
+    });
+
+    let scheduledShifts = 0;
+    for (const assignment of assignments) {
+      scheduledShifts += expandOccurrences(
+        {
+          recurrenceType: assignment.shift.recurrenceType,
+          scheduledStartAt: assignment.shift.scheduledStartAt,
+          scheduledEndAt: assignment.shift.scheduledEndAt,
+          recurrenceEndAt: assignment.shift.recurrenceEndAt,
+          recurrenceDaysOfWeek: assignment.shift.recurrenceDaysOfWeek,
+          timezone: assignment.shift.timezone,
+          organisationTimezone: assignment.shift.organisation?.timezone,
+        },
+        input.fromDate,
+        input.toDate,
+        366,
+      ).length;
+    }
+
+    const completedShifts = input.detailRows.filter((row) => row.valid).length;
+    const missedShifts = Math.max(0, scheduledShifts - completedShifts);
+    const totalClockedSeconds = input.detailRows.reduce(
+      (sum, row) => sum + row.grossSeconds,
+      0,
+    );
+    const totalBreakSeconds = input.detailRows.reduce(
+      (sum, row) => sum + row.breakSeconds,
+      0,
+    );
+    const totalWorkedSeconds = input.detailRows.reduce(
+      (sum, row) => sum + row.workedSeconds,
+      0,
+    );
+    const overtimeSeconds = input.detailRows.reduce(
+      (sum, row) => sum + row.overtimeSeconds,
+      0,
+    );
+    const dayKeys = new Set(
+      input.detailRows.map((row) => row.dayKey).filter(Boolean),
+    );
+
+    return {
+      totalScheduledShifts: scheduledShifts,
+      completedShifts,
+      missedShifts,
+      totalClockedHours:
+        this.attendanceCalculation.roundHoursFromSeconds(totalClockedSeconds),
+      totalBreakHours:
+        this.attendanceCalculation.roundHoursFromSeconds(totalBreakSeconds),
+      totalWorkedHours:
+        this.attendanceCalculation.roundHoursFromSeconds(totalWorkedSeconds),
+      averageHoursPerDay: this.attendanceCalculation.calculateAverageHours(
+        totalWorkedSeconds,
+        dayKeys.size,
+      ),
+      overtimeHours:
+        this.attendanceCalculation.roundHoursFromSeconds(overtimeSeconds),
+    };
   }
 
   private exportStub(reportType: string) {

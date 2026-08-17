@@ -128,6 +128,11 @@ import { SuspiciousRequestMiddleware } from './common/middleware/suspicious-requ
         process.env.ATTENDANCE_IDEMPOTENCY_TTL_SECONDS = String(
           validated.ATTENDANCE_IDEMPOTENCY_TTL_SECONDS,
         );
+        if (validated.ATTENDANCE_GEOFENCE_ENABLED !== undefined) {
+          process.env.ATTENDANCE_GEOFENCE_ENABLED = String(
+            validated.ATTENDANCE_GEOFENCE_ENABLED,
+          );
+        }
         process.env.PATROL_DEVICE_TIME_TOLERANCE_MINUTES = String(
           validated.PATROL_DEVICE_TIME_TOLERANCE_MINUTES,
         );

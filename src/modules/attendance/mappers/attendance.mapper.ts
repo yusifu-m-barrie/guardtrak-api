@@ -122,6 +122,10 @@ export function toAttendanceResponse(
     id: attendance.id,
     organisationId: attendance.organisationId,
     assignmentId: attendance.assignmentId,
+    occurrenceDate:
+      attendance.occurrenceDate instanceof Date
+        ? attendance.occurrenceDate.toISOString().slice(0, 10)
+        : null,
     officerId: attendance.officerId,
     shiftId: attendance.shiftId,
     siteId: attendance.siteId,
@@ -136,6 +140,8 @@ export function toAttendanceResponse(
     clockOutLongitude: decimalToNumber(attendance.clockOutLongitude),
     clockInOutsideGeofence: attendance.clockInOutsideGeofence,
     clockOutOutsideGeofence: attendance.clockOutOutsideGeofence,
+    geofenceEnforcementDisabled:
+      attendance.geofenceEnforcementDisabled ?? false,
     clockInDistanceMeters: decimalToNumber(attendance.clockInDistanceMeters),
     clockOutDistanceMeters: decimalToNumber(attendance.clockOutDistanceMeters),
     clockInAccuracyMeters: decimalToNumber(attendance.clockInAccuracyMeters),

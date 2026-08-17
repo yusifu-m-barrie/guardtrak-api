@@ -80,6 +80,13 @@ enum ShiftStatus {
   ARCHIVED
 }
 
+enum RecurrenceType {
+  NONE
+  DAILY
+  WEEKLY
+  CUSTOM_WEEKDAYS
+}
+
 enum AssignmentStatus {
   ASSIGNED
   CONFIRMED
@@ -789,12 +796,20 @@ model Shift {
   siteId                   String      @db.Uuid
   title                    String
   description              String?
-  scheduledStartAt         DateTime    @db.Timestamptz(3)
-  scheduledEndAt           DateTime    @db.Timestamptz(3)
-  unpaidBreakMinutes       Int         @default(0)
-  gracePeriodMinutes       Int         @default(15)
+  scheduledStartAt         DateTime       @db.Timestamptz(3)
+  scheduledEndAt           DateTime       @db.Timestamptz(3)
+  unpaidBreakMinutes       Int            @default(0)
+  gracePeriodMinutes       Int            @default(15)
   overtimeThresholdMinutes Int?
-  status                   ShiftStatus @default(DRAFT)
+  /// NONE = one-off shift. Recurring shifts keep a single template row.
+  recurrenceType           RecurrenceType @default(NONE)
+  /// Inclusive last calendar date a recurring occurrence may start.
+  recurrenceEndAt          DateTime?      @db.Timestamptz(3)
+  /// 0=Sunday … 6=Saturday. Used by WEEKLY (optional) and CUSTOM_WEEKDAYS.
+  recurrenceDaysOfWeek     Int[]          @default([])
+  /// IANA timezone for occurrence expansion. Null = organisation.timezone.
+  timezone                 String?
+  status                   ShiftStatus    @default(DRAFT)
   instructions             String?
   cancellationReason       String?
   cancelledAt              DateTime?   @db.Timestamptz(3)
@@ -836,6 +851,8 @@ model Assignment {
   cancelledAt          DateTime?        @db.Timestamptz(3)
   cancellationReason   String?
   replacedAssignmentId String?          @db.Uuid
+  notes                String?
+  isActive             Boolean          @default(true)
   createdByUserId      String           @db.Uuid
   createdAt            DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime         @updatedAt @db.Timestamptz(3)
@@ -848,7 +865,7 @@ model Assignment {
   replacedAssignment Assignment?        @relation("AssignmentReplacement", fields: [replacedAssignmentId], references: [id], onDelete: SetNull)
   replacementOf      Assignment[]       @relation("AssignmentReplacement")
   events             AssignmentEvent[]
-  attendance         Attendance?
+  attendances        Attendance[]
   patrolAssignments  PatrolAssignment[]
   incidents          Incident[]
   emergencies        Emergency[]
@@ -886,7 +903,9 @@ model AssignmentEvent {
 model Attendance {
   id                      String           @id @default(uuid()) @db.Uuid
   organisationId          String           @db.Uuid
-  assignmentId            String           @unique @db.Uuid
+  assignmentId            String           @db.Uuid
+  /// Calendar date of the shift occurrence in the shift/org timezone.
+  occurrenceDate          DateTime         @db.Date
   officerId               String           @db.Uuid
   shiftId                 String           @db.Uuid
   siteId                  String           @db.Uuid
@@ -905,6 +924,7 @@ model Attendance {
   clockOutDistanceMeters  Decimal?         @db.Decimal(10, 2)
   clockInOutsideGeofence  Boolean          @default(false)
   clockOutOutsideGeofence Boolean          @default(false)
+  geofenceEnforcementDisabled Boolean      @default(false)
   clockInReason           String?
   clockOutReason          String?
   /// Soft reference to Evidence.id (avoids circular Prisma relation with Evidence.attendanceId)
@@ -937,6 +957,7 @@ model Attendance {
   breaks       ShiftBreak[]
   evidences    Evidence[]
 
+  @@unique([assignmentId, occurrenceDate])
   @@unique([organisationId, localAttendanceId])
   @@index([organisationId, status])
   @@index([organisationId, officerId, status])

@@ -166,6 +166,10 @@ export default (): GuardTrakConfig => {
         process.env.ATTENDANCE_IDEMPOTENCY_TTL_SECONDS ?? '86400',
         10,
       ),
+      geofenceEnabled: parseBoolean(
+        process.env.ATTENDANCE_GEOFENCE_ENABLED,
+        nodeEnv === 'production' || nodeEnv === 'staging',
+      ),
     },
     patrol: {
       deviceTimeToleranceMinutes: Number.parseInt(

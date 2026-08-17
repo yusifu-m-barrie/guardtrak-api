@@ -1,7 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -11,6 +14,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { RecurrenceType } from '../../../../generated/prisma/client';
 
 export class CreateShiftDto {
   @ApiProperty({ format: 'uuid' })
@@ -29,11 +33,11 @@ export class CreateShiftDto {
   @MaxLength(2000)
   description?: string;
 
-  @ApiProperty({ example: '2026-07-20T18:00:00.000Z' })
+  @ApiProperty({ example: '2026-08-17T18:00:00.000Z' })
   @IsDateString()
   scheduledStartAt!: string;
 
-  @ApiProperty({ example: '2026-07-21T06:00:00.000Z' })
+  @ApiProperty({ example: '2026-08-17T21:00:00.000Z' })
   @IsDateString()
   scheduledEndAt!: string;
 
@@ -70,4 +74,38 @@ export class CreateShiftDto {
   @IsOptional()
   @IsBoolean()
   asDraft?: boolean;
+
+  @ApiPropertyOptional({ enum: RecurrenceType, default: RecurrenceType.NONE })
+  @IsOptional()
+  @IsEnum(RecurrenceType)
+  recurrenceType?: RecurrenceType;
+
+  @ApiPropertyOptional({
+    description:
+      'Inclusive last calendar date a recurring occurrence may start',
+  })
+  @IsOptional()
+  @IsDateString()
+  recurrenceEndAt?: string;
+
+  @ApiPropertyOptional({
+    description: '0=Sunday … 6=Saturday. Required for CUSTOM_WEEKDAYS.',
+    type: [Number],
+  })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  recurrenceDaysOfWeek?: number[];
+
+  @ApiPropertyOptional({
+    example: 'America/New_York',
+    description: 'IANA timezone. Defaults to the organisation timezone.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timezone?: string;
 }

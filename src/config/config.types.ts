@@ -144,6 +144,11 @@ export interface AttendanceConfig {
   clockInEarlyMinutes: number;
   deviceTimeToleranceMinutes: number;
   idempotencyTtlSeconds: number;
+  /**
+   * When false, clock-in/out still stores coordinates but does not reject
+   * outside-geofence or low-accuracy GPS. Production should keep this true.
+   */
+  geofenceEnabled: boolean;
 }
 
 export interface PatrolConfig {

@@ -505,6 +505,7 @@ async function main(): Promise<void> {
       clockInAccuracyMeters: 12.5,
       clockInDistanceMeters: 18.0,
       clockInOutsideGeofence: false,
+      occurrenceDate: startCurrent,
       localAttendanceId: 'local-att-dev-001',
       totalBreakMinutes: 0,
     },
@@ -583,7 +584,9 @@ async function main(): Promise<void> {
   });
 
   const hashSeedQr = (value: string) =>
-    createHash('sha256').update(value.trim().toUpperCase(), 'utf8').digest('hex');
+    createHash('sha256')
+      .update(value.trim().toUpperCase(), 'utf8')
+      .digest('hex');
 
   const checkpoints = [
     {
@@ -761,7 +764,8 @@ async function main(): Promise<void> {
       title: 'Unfamiliar vehicle near loading bay',
       description:
         'Officer observed an unfamiliar vehicle lingering near the loading bay for approximately 10 minutes.',
-      actionsTaken: 'Approached vehicle, recorded plate number, notified supervisor.',
+      actionsTaken:
+        'Approached vehicle, recorded plate number, notified supervisor.',
       occurredAtDevice: startCurrent,
       occurredAtServer: startCurrent,
       reportedAtServer: startCurrent,
@@ -837,17 +841,25 @@ async function main(): Promise<void> {
       accuracyMeters: 15,
       deviceCreatedAt: new Date(startCurrent.getTime() - 24 * 60 * 60 * 1000),
       serverCreatedAt: new Date(startCurrent.getTime() - 24 * 60 * 60 * 1000),
-      acknowledgedAt: new Date(startCurrent.getTime() - 24 * 60 * 60 * 1000 + 120000),
+      acknowledgedAt: new Date(
+        startCurrent.getTime() - 24 * 60 * 60 * 1000 + 120000,
+      ),
       acknowledgedByUserId: IDS.supervisorUser,
-      respondingAt: new Date(startCurrent.getTime() - 24 * 60 * 60 * 1000 + 180000),
-      resolvedAt: new Date(startCurrent.getTime() - 24 * 60 * 60 * 1000 + 900000),
+      respondingAt: new Date(
+        startCurrent.getTime() - 24 * 60 * 60 * 1000 + 180000,
+      ),
+      resolvedAt: new Date(
+        startCurrent.getTime() - 24 * 60 * 60 * 1000 + 900000,
+      ),
       resolvedByUserId: IDS.supervisorUser,
-      resolutionNotes: 'False alarm — accidental SOS press. Officer confirmed safe.',
+      resolutionNotes:
+        'False alarm — accidental SOS press. Officer confirmed safe.',
       localEmergencyId: 'local-sos-dev-001',
     },
     update: {
       status: EmergencyStatus.RESOLVED,
-      resolutionNotes: 'False alarm — accidental SOS press. Officer confirmed safe.',
+      resolutionNotes:
+        'False alarm — accidental SOS press. Officer confirmed safe.',
     },
   });
 

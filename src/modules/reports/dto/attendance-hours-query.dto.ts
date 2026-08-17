@@ -21,6 +21,7 @@ export const ATTENDANCE_REPORT_TYPES = [
   'officer-all-sites',
   'all-officers',
   'officer-site-breakdown',
+  'payroll-summary',
 ] as const;
 
 export type AttendanceReportType = (typeof ATTENDANCE_REPORT_TYPES)[number];
@@ -46,9 +47,17 @@ function toStringArray(value: unknown): string[] | undefined {
 }
 
 export class AttendanceHoursQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'Inclusive range start. Date-only (YYYY-MM-DD) uses the organisation timezone.',
+  })
   @IsISO8601()
   from!: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Inclusive range end. Date-only (YYYY-MM-DD) uses the organisation timezone.',
+  })
   @IsISO8601()
   to!: string;
 
@@ -102,7 +111,7 @@ export class AttendanceHoursQueryDto {
     enum: ATTENDANCE_HOURS_BASIS,
     default: 'payable',
     description:
-      'gross = clockOut-clockIn; payable = stored payable minutes or gross minus breaks',
+      'gross = clockOut-clockIn; payable = (clockOut-clockIn) minus actual break minutes',
   })
   @IsOptional()
   @IsIn(ATTENDANCE_HOURS_BASIS)

@@ -2,6 +2,7 @@ import type {
   Assignment,
   OfficerProfile,
   Prisma,
+  RecurrenceType,
   SecuritySite,
   Shift,
   SupervisorProfile,
@@ -53,8 +54,22 @@ type ShiftSummary = Pick<
   | 'scheduledEndAt'
   | 'siteId'
   | 'gracePeriodMinutes'
+  | 'unpaidBreakMinutes'
+  | 'recurrenceType'
+  | 'recurrenceEndAt'
+  | 'recurrenceDaysOfWeek'
+  | 'timezone'
 > & {
   site?: SiteForAssignment | null;
+  organisation?: { timezone: string } | null;
+};
+
+export type AssignmentResponseOptions = {
+  occurrenceDate?: string | null;
+  occurrenceStartAt?: Date | null;
+  occurrenceEndAt?: Date | null;
+  geofenceEnforcementEnabled?: boolean;
+  timezone?: string | null;
 };
 
 function decimalToNumber(value: Prisma.Decimal | number): number {
@@ -85,25 +100,46 @@ function toSitePayload(site: SiteForAssignment) {
   };
 }
 
+function toRecurrencePayload(
+  shift: ShiftSummary | null | undefined,
+  timezone: string | null,
+) {
+  const type = shift?.recurrenceType ?? RecurrenceType.NONE;
+  return {
+    type,
+    startAt: shift?.scheduledStartAt?.toISOString() ?? null,
+    endAt: shift?.recurrenceEndAt?.toISOString() ?? null,
+    daysOfWeek: shift?.recurrenceDaysOfWeek ?? [],
+    timezone,
+  };
+}
+
 export function toAssignmentResponse(
   assignment: Assignment & {
+    notes?: string | null;
+    isActive?: boolean;
     createdBy?: Pick<
       User,
-      | 'id'
-      | 'firstName'
-      | 'lastName'
-      | 'displayName'
-      | 'employeeId'
-      | 'role'
+      'id' | 'firstName' | 'lastName' | 'displayName' | 'employeeId' | 'role'
     > | null;
     officer?: OfficerSummary | null;
     supervisor?: SupervisorSummary | null;
     shift?: ShiftSummary | null;
   },
+  options?: AssignmentResponseOptions,
 ) {
   const site = assignment.shift?.site
     ? toSitePayload(assignment.shift.site)
     : undefined;
+  const timezone =
+    options?.timezone ??
+    assignment.shift?.timezone ??
+    assignment.shift?.organisation?.timezone ??
+    null;
+  const occurrenceStartAt =
+    options?.occurrenceStartAt ?? assignment.shift?.scheduledStartAt ?? null;
+  const occurrenceEndAt =
+    options?.occurrenceEndAt ?? assignment.shift?.scheduledEndAt ?? null;
 
   return {
     id: assignment.id,
@@ -112,6 +148,8 @@ export function toAssignmentResponse(
     officerId: assignment.officerId,
     supervisorId: assignment.supervisorId,
     status: assignment.status,
+    notes: assignment.notes ?? null,
+    isActive: assignment.isActive ?? true,
     assignedAt: assignment.assignedAt.toISOString(),
     confirmedAt: assignment.confirmedAt?.toISOString() ?? null,
     startedAt: assignment.startedAt?.toISOString() ?? null,
@@ -122,6 +160,12 @@ export function toAssignmentResponse(
     createdByUserId: assignment.createdByUserId,
     createdAt: assignment.createdAt.toISOString(),
     updatedAt: assignment.updatedAt.toISOString(),
+    occurrenceDate: options?.occurrenceDate ?? null,
+    occurrenceStartAt: occurrenceStartAt?.toISOString() ?? null,
+    occurrenceEndAt: occurrenceEndAt?.toISOString() ?? null,
+    timezone,
+    geofenceEnforcementEnabled: options?.geofenceEnforcementEnabled ?? true,
+    recurrence: toRecurrencePayload(assignment.shift, timezone),
     /** Hydrated site for officer clock-in / geofence (officers lack site:read). */
     site,
     createdBy: assignment.createdBy
@@ -170,8 +214,18 @@ export function toAssignmentResponse(
           status: assignment.shift.status,
           siteId: assignment.shift.siteId,
           gracePeriodMinutes: assignment.shift.gracePeriodMinutes,
-          scheduledStartAt: assignment.shift.scheduledStartAt.toISOString(),
-          scheduledEndAt: assignment.shift.scheduledEndAt.toISOString(),
+          unpaidBreakMinutes: assignment.shift.unpaidBreakMinutes,
+          scheduledStartAt:
+            occurrenceStartAt?.toISOString() ??
+            assignment.shift.scheduledStartAt.toISOString(),
+          scheduledEndAt:
+            occurrenceEndAt?.toISOString() ??
+            assignment.shift.scheduledEndAt.toISOString(),
+          recurrenceType: assignment.shift.recurrenceType,
+          recurrenceEndAt:
+            assignment.shift.recurrenceEndAt?.toISOString() ?? null,
+          recurrenceDaysOfWeek: assignment.shift.recurrenceDaysOfWeek ?? [],
+          timezone,
           site,
         }
       : undefined,

@@ -36,6 +36,7 @@ const BOOLEAN_ENV_KEYS = [
   'AUTH_ALLOW_DEV_OTP_OUTPUT',
   'AUTH_NEW_DEVICE_AUTO_APPROVE',
   'AUTH_STRICT_FINGERPRINT',
+  'ATTENDANCE_GEOFENCE_ENABLED',
   'REDIS_ENABLED',
   'QUEUE_ENABLED',
   'FCM_ENABLED',
@@ -279,6 +280,10 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(60)
   ATTENDANCE_IDEMPOTENCY_TTL_SECONDS = 86_400;
+
+  @IsOptional()
+  @Transform(optionalBooleanTransform)
+  ATTENDANCE_GEOFENCE_ENABLED?: boolean;
 
   @Type(() => Number)
   @IsInt()
@@ -608,6 +613,7 @@ export function applyDevelopmentDefaults(
     STORAGE_PROVIDER: config.STORAGE_PROVIDER ?? 'local',
     MAX_IMAGE_SIZE_BYTES: config.MAX_IMAGE_SIZE_BYTES ?? '10485760',
     MAX_VIDEO_SIZE_BYTES: config.MAX_VIDEO_SIZE_BYTES ?? '104857600',
+    ATTENDANCE_GEOFENCE_ENABLED: config.ATTENDANCE_GEOFENCE_ENABLED ?? 'false',
     REDIS_ENABLED: config.REDIS_ENABLED ?? 'false',
     REDIS_URL: config.REDIS_URL ?? 'redis://localhost:6379',
     REDIS_KEY_PREFIX: config.REDIS_KEY_PREFIX ?? 'guardtrak:',
