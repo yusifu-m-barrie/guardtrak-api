@@ -134,4 +134,30 @@ describe('GeofenceService', () => {
       });
     });
   });
+
+  describe('applyEnforcement', () => {
+    it('keeps an outside result but does not reject when enforcement is off', () => {
+      const outside = service.evaluateGeofence({
+        distanceMeters: 7_237_000,
+        radiusMeters: 100,
+        policy: GeofencePolicy.BLOCK,
+      });
+      expect(outside.allowed).toBe(false);
+      expect(outside.outside).toBe(true);
+      expect(service.applyEnforcement(false, outside)).toEqual({
+        allowed: true,
+        requiresReview: false,
+        outside: true,
+      });
+    });
+
+    it('still rejects when enforcement is on', () => {
+      const outside = service.evaluateGeofence({
+        distanceMeters: 7_237_000,
+        radiusMeters: 100,
+        policy: GeofencePolicy.BLOCK,
+      });
+      expect(service.applyEnforcement(true, outside).allowed).toBe(false);
+    });
+  });
 });

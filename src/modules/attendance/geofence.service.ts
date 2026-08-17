@@ -69,6 +69,20 @@ export class GeofenceService {
     return EARTH_RADIUS_METERS * c;
   }
 
+  applyEnforcement(
+    enabled: boolean,
+    evaluation: GeofenceEvaluationResult,
+  ): GeofenceEvaluationResult {
+    if (!enabled) {
+      return {
+        ...evaluation,
+        allowed: true,
+        requiresReview: false,
+      };
+    }
+    return evaluation;
+  }
+
   evaluateGeofence(input: GeofenceEvaluationInput): GeofenceEvaluationResult {
     const outside = input.distanceMeters > input.radiusMeters;
 

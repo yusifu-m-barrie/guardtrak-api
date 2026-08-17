@@ -6,7 +6,10 @@ import {
   occurrenceFromClientDate,
   occurrenceOnDate,
   recurrencesOverlap,
+  resolveActiveOrUpcomingToday,
+  resolveClockInOccurrence,
   resolveDutyOccurrence,
+  todayOccurrence,
 } from './shift-recurrence.util';
 
 describe('shift-recurrence.util', () => {
@@ -82,6 +85,15 @@ describe('shift-recurrence.util', () => {
       currentOccurrence(daily, now, 2 * 60 * 60_000, 15 * 60_000),
     ).toBeNull();
     expect(calendarOccurrenceNear(daily, now)?.dateKey).toBe('2026-08-18');
+    expect(todayOccurrence(daily, now)?.dateKey).toBe('2026-08-18');
+    expect(
+      resolveClockInOccurrence(daily, now, 2 * 60 * 60_000, 15 * 60_000)
+        ?.dateKey,
+    ).toBe('2026-08-18');
+    expect(
+      resolveActiveOrUpcomingToday(daily, now, 2 * 60 * 60_000, 15 * 60_000)
+        ?.dateKey,
+    ).toBe('2026-08-18');
     expect(occurrenceFromClientDate(daily, now, '2026-08-18')?.dateKey).toBe(
       '2026-08-18',
     );
@@ -93,6 +105,21 @@ describe('shift-recurrence.util', () => {
     expect(
       resolveDutyOccurrence(daily, now, 2 * 60 * 60_000, 15 * 60_000, false),
     ).toBeNull();
+  });
+
+  it('expands DAILY occurrences for today, tomorrow, and the next day', () => {
+    const rows = expandOccurrences(
+      daily,
+      new Date('2026-08-17T00:00:00.000Z'),
+      new Date('2026-08-20T00:00:00.000Z'),
+    );
+    expect(rows.map((row) => row.dateKey)).toEqual([
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+    ]);
+    expect(rows[0].startAt.toISOString()).toBe('2026-08-17T18:00:00.000Z');
+    expect(rows[2].endAt.toISOString()).toBe('2026-08-19T21:00:00.000Z');
   });
 
   it('supports CUSTOM_WEEKDAYS and rejects unmatched days', () => {

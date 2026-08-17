@@ -44,7 +44,7 @@ import {
   expandOccurrences,
   isRecurringShift,
   recurrencesOverlap,
-  resolveDutyOccurrence,
+  resolveActiveOrUpcomingToday,
   type ShiftRecurrenceInput,
 } from '../shifts/shift-recurrence.util';
 
@@ -415,7 +415,6 @@ export class AssignmentsService {
     );
     const now = new Date();
     const earlyMs = 2 * 60 * 60_000;
-    const allowOutsideWindow = !this.geofenceEnabled();
 
     const candidates = await this.prisma.assignment.findMany({
       where: {
@@ -440,22 +439,12 @@ export class AssignmentsService {
         assignment.status === AssignmentStatus.IN_PROGRESS && assignment.shift,
     );
     if (inProgress) {
-      const occurrence = this.occurrenceFor(
-        inProgress,
-        now,
-        earlyMs,
-        allowOutsideWindow,
-      );
+      const occurrence = this.occurrenceFor(inProgress, now, earlyMs);
       return this.toResponse(inProgress, occurrence);
     }
 
     for (const assignment of candidates) {
-      const occurrence = this.occurrenceFor(
-        assignment,
-        now,
-        earlyMs,
-        allowOutsideWindow,
-      );
+      const occurrence = this.occurrenceFor(assignment, now, earlyMs);
       if (occurrence) {
         return this.toResponse(assignment, occurrence);
       }
@@ -1178,15 +1167,13 @@ export class AssignmentsService {
     },
     now: Date,
     earlyMs: number,
-    allowOutsideWindow = false,
   ) {
     const graceMs = (assignment.shift?.gracePeriodMinutes ?? 15) * 60_000;
-    return resolveDutyOccurrence(
+    return resolveActiveOrUpcomingToday(
       this.toRecurrenceInput(assignment),
       now,
       earlyMs,
       graceMs,
-      allowOutsideWindow,
     );
   }
 

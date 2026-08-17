@@ -55,11 +55,9 @@ import type { ListMyAttendanceQueryDto } from './dto/list-my-attendance-query.dt
 import { GeofenceService } from './geofence.service';
 import { toAttendanceResponse } from './mappers/attendance.mapper';
 import {
-  calendarOccurrenceNear,
-  currentOccurrence,
   isRecurringShift,
-  occurrenceFromClientDate,
   occurrenceOnDate,
+  resolveClockInOccurrence,
 } from '../shifts/shift-recurrence.util';
 import {
   dateKeyToUtcDate,
@@ -111,6 +109,13 @@ const ATTENDANCE_INCLUDE = {
       unpaidBreakMinutes: true,
       gracePeriodMinutes: true,
       overtimeThresholdMinutes: true,
+      recurrenceType: true,
+      recurrenceEndAt: true,
+      recurrenceDaysOfWeek: true,
+      timezone: true,
+      organisation: {
+        select: { timezone: true },
+      },
     },
   },
   site: {
@@ -1005,19 +1010,13 @@ export class AttendanceService {
       organisationTimezone: shift.organisation?.timezone,
     };
     const dutyWindowMs = Math.max(earlyMinutes * 60_000, currentWindowMs);
-    const occurrence =
-      occurrenceFromClientDate(
-        recurrenceInput,
-        serverNow,
-        dto.occurrenceDate,
-      ) ??
-      currentOccurrence(
-        recurrenceInput,
-        serverNow,
-        dutyWindowMs,
-        shift.gracePeriodMinutes * 60_000,
-      ) ??
-      calendarOccurrenceNear(recurrenceInput, serverNow);
+    const occurrence = resolveClockInOccurrence(
+      recurrenceInput,
+      serverNow,
+      dutyWindowMs,
+      shift.gracePeriodMinutes * 60_000,
+      dto.occurrenceDate,
+    );
 
     if (!occurrence) {
       throw new AppException(
@@ -1047,14 +1046,14 @@ export class AttendanceService {
       occurrence.startAt.getTime() - earlyMinutes * 60_000,
     );
 
-    if (geofenceEnabled && serverNow < earliest) {
+    if (serverNow < earliest) {
       throw new AppException(
         'Clock-in is too early for this shift',
         HttpStatus.CONFLICT,
         ErrorCode.ATTENDANCE_CLOCK_IN_TOO_EARLY,
       );
     }
-    if (geofenceEnabled && serverNow > occurrence.endAt) {
+    if (serverNow > occurrence.endAt) {
       throw new AppException(
         'Shift has already ended',
         HttpStatus.CONFLICT,
@@ -1093,18 +1092,15 @@ export class AttendanceService {
       dto.latitude,
       dto.longitude,
     );
-    const geofence = geofenceEnabled
-      ? this.geofenceService.evaluateGeofence({
-          distanceMeters,
-          radiusMeters: site.clockInRadiusMeters,
-          policy: site.clockInOutsideGeofencePolicy,
-          reason: dto.reason,
-        })
-      : {
-          allowed: true,
-          requiresReview: false,
-          outside: distanceMeters > site.clockInRadiusMeters,
-        };
+    const geofence = this.geofenceService.applyEnforcement(
+      geofenceEnabled,
+      this.geofenceService.evaluateGeofence({
+        distanceMeters,
+        radiusMeters: site.clockInRadiusMeters,
+        policy: site.clockInOutsideGeofencePolicy,
+        reason: dto.reason,
+      }),
+    );
 
     if (!geofenceEnabled) {
       this.logger.log('Clock-in allowed with geofence enforcement disabled');
@@ -1349,18 +1345,15 @@ export class AttendanceService {
       dto.latitude,
       dto.longitude,
     );
-    const geofence = geofenceEnabled
-      ? this.geofenceService.evaluateGeofence({
-          distanceMeters,
-          radiusMeters: site.clockOutRadiusMeters,
-          policy: site.clockOutOutsideGeofencePolicy,
-          reason: dto.reason,
-        })
-      : {
-          allowed: true,
-          requiresReview: false,
-          outside: distanceMeters > site.clockOutRadiusMeters,
-        };
+    const geofence = this.geofenceService.applyEnforcement(
+      geofenceEnabled,
+      this.geofenceService.evaluateGeofence({
+        distanceMeters,
+        radiusMeters: site.clockOutRadiusMeters,
+        policy: site.clockOutOutsideGeofencePolicy,
+        reason: dto.reason,
+      }),
+    );
 
     if (!geofenceEnabled) {
       this.logger.log('Clock-out allowed with geofence enforcement disabled');

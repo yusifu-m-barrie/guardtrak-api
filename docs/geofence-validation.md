@@ -21,4 +21,15 @@ If `accuracyMeters` > site `minimumGpsAccuracyMeters`, reject with `ATTENDANCE_G
 
 Coordinates must be in range before calculation.
 
+## `ATTENDANCE_GEOFENCE_ENABLED`
+
+Config flag — do not hardcode bypasses in controllers.
+
+| Value | Location rejection | GPS stored |
+| --- | --- | --- |
+| `true` (production/staging default if unset in `configuration.ts`) | Yes (site radius + GPS accuracy) | Yes |
+| `false` | No | Yes (`clockInLatitude` / `longitude` / `accuracyMeters` / `distanceMeters`) |
+
+Clock-in / clock-out still require a valid assignment occurrence and the allowed time window when this flag is `false`.
+
 Future: PostGIS `ST_DWithin` for indexed geo queries.

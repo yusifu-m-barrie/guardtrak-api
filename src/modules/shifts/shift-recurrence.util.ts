@@ -232,6 +232,16 @@ export function occurrenceFromClientDate(
   return occurrenceOnDate(input, dateKey);
 }
 
+export function todayOccurrence(
+  input: ShiftRecurrenceInput,
+  now: Date,
+): ShiftOccurrence | null {
+  return occurrenceOnDate(
+    input,
+    zonedDateKey(now, resolveShiftTimeZone(input)),
+  );
+}
+
 export function calendarOccurrenceNear(
   input: ShiftRecurrenceInput,
   now: Date,
@@ -254,7 +264,43 @@ export function resolveDutyOccurrence(
 ): ShiftOccurrence | null {
   return (
     currentOccurrence(input, now, earlyMs, graceMs) ??
-    (allowOutsideWindow ? calendarOccurrenceNear(input, now) : null)
+    (allowOutsideWindow ? todayOccurrence(input, now) : null)
+  );
+}
+
+/** Current/upcoming card: duty window first, else today's occurrence until it ends. */
+export function resolveActiveOrUpcomingToday(
+  input: ShiftRecurrenceInput,
+  now: Date,
+  earlyMs: number,
+  graceMs: number,
+): ShiftOccurrence | null {
+  const inWindow = currentOccurrence(input, now, earlyMs, graceMs);
+  if (inWindow) {
+    return inWindow;
+  }
+  const today = todayOccurrence(input, now);
+  if (!today) {
+    return null;
+  }
+  if (now.getTime() <= today.endAt.getTime() + graceMs) {
+    return today;
+  }
+  return null;
+}
+
+/** Clock-in: prefer an in-window occurrence (overnight), else today's calendar occurrence. */
+export function resolveClockInOccurrence(
+  input: ShiftRecurrenceInput,
+  now: Date,
+  earlyMs: number,
+  graceMs: number,
+  clientDateKey?: string | null,
+): ShiftOccurrence | null {
+  return (
+    occurrenceFromClientDate(input, now, clientDateKey) ??
+    currentOccurrence(input, now, earlyMs, graceMs) ??
+    todayOccurrence(input, now)
   );
 }
 
