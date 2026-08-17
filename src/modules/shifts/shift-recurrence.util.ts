@@ -209,6 +209,55 @@ export function currentOccurrence(
   return null;
 }
 
+export function nearbyOccurrenceDateKeys(
+  input: ShiftRecurrenceInput,
+  now: Date,
+): string[] {
+  const todayKey = zonedDateKey(now, resolveShiftTimeZone(input));
+  return [
+    todayKey,
+    addCalendarDays(todayKey, -1),
+    addCalendarDays(todayKey, 1),
+  ];
+}
+
+export function occurrenceFromClientDate(
+  input: ShiftRecurrenceInput,
+  now: Date,
+  dateKey?: string | null,
+): ShiftOccurrence | null {
+  if (!dateKey || !nearbyOccurrenceDateKeys(input, now).includes(dateKey)) {
+    return null;
+  }
+  return occurrenceOnDate(input, dateKey);
+}
+
+export function calendarOccurrenceNear(
+  input: ShiftRecurrenceInput,
+  now: Date,
+): ShiftOccurrence | null {
+  for (const dateKey of nearbyOccurrenceDateKeys(input, now)) {
+    const occurrence = occurrenceOnDate(input, dateKey);
+    if (occurrence) {
+      return occurrence;
+    }
+  }
+  return null;
+}
+
+export function resolveDutyOccurrence(
+  input: ShiftRecurrenceInput,
+  now: Date,
+  earlyMs: number,
+  graceMs: number,
+  allowOutsideWindow = false,
+): ShiftOccurrence | null {
+  return (
+    currentOccurrence(input, now, earlyMs, graceMs) ??
+    (allowOutsideWindow ? calendarOccurrenceNear(input, now) : null)
+  );
+}
+
 export function recurrencesOverlap(
   left: ShiftRecurrenceInput,
   right: ShiftRecurrenceInput,

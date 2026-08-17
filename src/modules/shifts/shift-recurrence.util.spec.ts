@@ -1,9 +1,12 @@
 import { RecurrenceType } from '../../../generated/prisma/client';
 import {
+  calendarOccurrenceNear,
   currentOccurrence,
   expandOccurrences,
+  occurrenceFromClientDate,
   occurrenceOnDate,
   recurrencesOverlap,
+  resolveDutyOccurrence,
 } from './shift-recurrence.util';
 
 describe('shift-recurrence.util', () => {
@@ -71,6 +74,25 @@ describe('shift-recurrence.util', () => {
       15 * 60_000,
     );
     expect(occurrence?.dateKey).toBe('2026-08-18');
+  });
+
+  it('resolves a DAILY occurrence on the calendar day even before the duty window', () => {
+    const now = new Date('2026-08-18T12:00:00.000Z'); // 08:00 America/New_York
+    expect(
+      currentOccurrence(daily, now, 2 * 60 * 60_000, 15 * 60_000),
+    ).toBeNull();
+    expect(calendarOccurrenceNear(daily, now)?.dateKey).toBe('2026-08-18');
+    expect(occurrenceFromClientDate(daily, now, '2026-08-18')?.dateKey).toBe(
+      '2026-08-18',
+    );
+    expect(occurrenceFromClientDate(daily, now, '2026-08-21')).toBeNull();
+    expect(
+      resolveDutyOccurrence(daily, now, 2 * 60 * 60_000, 15 * 60_000, true)
+        ?.dateKey,
+    ).toBe('2026-08-18');
+    expect(
+      resolveDutyOccurrence(daily, now, 2 * 60 * 60_000, 15 * 60_000, false),
+    ).toBeNull();
   });
 
   it('supports CUSTOM_WEEKDAYS and rejects unmatched days', () => {

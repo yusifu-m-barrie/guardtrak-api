@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -15,6 +16,15 @@ export class ClockInDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID('4')
   assignmentId!: string;
+
+  @ApiPropertyOptional({
+    example: '2026-08-17',
+    description:
+      'Occurrence calendar date (YYYY-MM-DD). Accepted only for yesterday, today, or tomorrow in the shift timezone.',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  occurrenceDate?: string;
 
   @ApiProperty({ example: '2026-07-20T17:58:12.000Z' })
   @IsDateString()

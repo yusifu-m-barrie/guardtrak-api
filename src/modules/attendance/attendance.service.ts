@@ -55,8 +55,10 @@ import type { ListMyAttendanceQueryDto } from './dto/list-my-attendance-query.dt
 import { GeofenceService } from './geofence.service';
 import { toAttendanceResponse } from './mappers/attendance.mapper';
 import {
+  calendarOccurrenceNear,
   currentOccurrence,
   isRecurringShift,
+  occurrenceFromClientDate,
   occurrenceOnDate,
 } from '../shifts/shift-recurrence.util';
 import {
@@ -989,39 +991,33 @@ export class AttendanceService {
 
     const shift = assignment.shift;
     const site = shift.site;
-    const timeZone = resolveTimeZone(
-      shift.timezone,
-      shift.organisation?.timezone,
-    );
     const earlyMinutes =
       this.configService.get<number>('attendance.clockInEarlyMinutes') ?? 30;
+    const currentWindowMs = 2 * 60 * 60_000;
+    const geofenceEnabled = this.isGeofenceEnforcementEnabled();
+    const recurrenceInput = {
+      recurrenceType: shift.recurrenceType,
+      scheduledStartAt: shift.scheduledStartAt,
+      scheduledEndAt: shift.scheduledEndAt,
+      recurrenceEndAt: shift.recurrenceEndAt,
+      recurrenceDaysOfWeek: shift.recurrenceDaysOfWeek,
+      timezone: shift.timezone,
+      organisationTimezone: shift.organisation?.timezone,
+    };
+    const dutyWindowMs = Math.max(earlyMinutes * 60_000, currentWindowMs);
     const occurrence =
-      currentOccurrence(
-        {
-          recurrenceType: shift.recurrenceType,
-          scheduledStartAt: shift.scheduledStartAt,
-          scheduledEndAt: shift.scheduledEndAt,
-          recurrenceEndAt: shift.recurrenceEndAt,
-          recurrenceDaysOfWeek: shift.recurrenceDaysOfWeek,
-          timezone: shift.timezone,
-          organisationTimezone: shift.organisation?.timezone,
-        },
+      occurrenceFromClientDate(
+        recurrenceInput,
         serverNow,
-        earlyMinutes * 60_000,
+        dto.occurrenceDate,
+      ) ??
+      currentOccurrence(
+        recurrenceInput,
+        serverNow,
+        dutyWindowMs,
         shift.gracePeriodMinutes * 60_000,
       ) ??
-      occurrenceOnDate(
-        {
-          recurrenceType: shift.recurrenceType,
-          scheduledStartAt: shift.scheduledStartAt,
-          scheduledEndAt: shift.scheduledEndAt,
-          recurrenceEndAt: shift.recurrenceEndAt,
-          recurrenceDaysOfWeek: shift.recurrenceDaysOfWeek,
-          timezone: shift.timezone,
-          organisationTimezone: shift.organisation?.timezone,
-        },
-        zonedDateKey(serverNow, timeZone),
-      );
+      calendarOccurrenceNear(recurrenceInput, serverNow);
 
     if (!occurrence) {
       throw new AppException(
@@ -1051,22 +1047,20 @@ export class AttendanceService {
       occurrence.startAt.getTime() - earlyMinutes * 60_000,
     );
 
-    if (serverNow < earliest) {
+    if (geofenceEnabled && serverNow < earliest) {
       throw new AppException(
         'Clock-in is too early for this shift',
         HttpStatus.CONFLICT,
         ErrorCode.ATTENDANCE_CLOCK_IN_TOO_EARLY,
       );
     }
-    if (serverNow > occurrence.endAt) {
+    if (geofenceEnabled && serverNow > occurrence.endAt) {
       throw new AppException(
         'Shift has already ended',
         HttpStatus.CONFLICT,
         ErrorCode.ATTENDANCE_SHIFT_ENDED,
       );
     }
-
-    const geofenceEnabled = this.isGeofenceEnforcementEnabled();
     if (
       geofenceEnabled &&
       dto.accuracyMeters > Number(site.minimumGpsAccuracyMeters)
