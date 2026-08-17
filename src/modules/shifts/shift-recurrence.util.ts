@@ -31,10 +31,7 @@ export function isRecurringShift(
   return (
     recurrenceType === RecurrenceType.DAILY ||
     recurrenceType === RecurrenceType.WEEKLY ||
-    recurrenceType === RecurrenceType.CUSTOM_WEEKDAYS ||
-    recurrenceType === 'DAILY' ||
-    recurrenceType === 'WEEKLY' ||
-    recurrenceType === 'CUSTOM_WEEKDAYS'
+    recurrenceType === RecurrenceType.CUSTOM_WEEKDAYS
   );
 }
 
@@ -59,13 +56,13 @@ function matchingWeekdays(input: ShiftRecurrenceInput): number[] | null {
     return null;
   }
   const explicit = normaliseDaysOfWeek(input.recurrenceDaysOfWeek);
-  if (type === RecurrenceType.DAILY || type === 'DAILY') {
+  if (type === RecurrenceType.DAILY) {
     return [0, 1, 2, 3, 4, 5, 6];
   }
   if (explicit.length > 0) {
     return explicit;
   }
-  if (type === RecurrenceType.WEEKLY || type === 'WEEKLY') {
+  if (type === RecurrenceType.WEEKLY) {
     return [
       zonedParts(input.scheduledStartAt, resolveShiftTimeZone(input)).weekday,
     ];

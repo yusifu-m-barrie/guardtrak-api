@@ -1,8 +1,8 @@
+import { RecurrenceType } from '../../../../generated/prisma/client';
 import type {
   Assignment,
   OfficerProfile,
   Prisma,
-  RecurrenceType,
   SecuritySite,
   Shift,
   SupervisorProfile,
