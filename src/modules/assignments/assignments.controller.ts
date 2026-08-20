@@ -89,7 +89,8 @@ export class AssignmentsController {
   @Get('history')
   @Permissions('assignment:read:self')
   @ApiOperation({
-    summary: 'Past assignments for authenticated officer (completed, cancelled, ended)',
+    summary:
+      'Past shift occurrences for authenticated officer (completed clock-outs)',
   })
   findHistory(
     @CurrentUser() user: RequestUser,

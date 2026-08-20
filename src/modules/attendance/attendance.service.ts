@@ -1035,8 +1035,16 @@ export class AttendanceService {
       },
     });
     if (existing) {
+      const alreadyFinished =
+        existing.clockOutServerAt != null ||
+        existing.status === AttendanceStatus.CLOCKED_OUT ||
+        existing.status === AttendanceStatus.PENDING_SUPERVISOR_APPROVAL ||
+        existing.status === AttendanceStatus.APPROVED_WITH_WARNING ||
+        existing.status === AttendanceStatus.SUPERVISOR_APPROVED;
       throw new AppException(
-        'Attendance already exists for this assignment',
+        alreadyFinished
+          ? 'You already completed this shift for today. Clock-in is available again on the next scheduled day.'
+          : 'Attendance already exists for this assignment occurrence',
         HttpStatus.CONFLICT,
         ErrorCode.ATTENDANCE_ALREADY_EXISTS,
       );

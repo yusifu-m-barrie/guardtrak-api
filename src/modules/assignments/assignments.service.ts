@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AssignmentStatus,
+  AttendanceStatus,
   AuditAction,
   OfficerEmploymentStatus,
   Prisma,
@@ -43,10 +44,24 @@ import { toAssignmentResponse } from './mappers/assignment.mapper';
 import {
   expandOccurrences,
   isRecurringShift,
+  occurrenceOnDate,
   recurrencesOverlap,
   resolveActiveOrUpcomingToday,
+  type ShiftOccurrence,
   type ShiftRecurrenceInput,
 } from '../shifts/shift-recurrence.util';
+
+/** Attendance statuses that mean the officer finished (or submitted) that occurrence. */
+const COMPLETED_ATTENDANCE_STATUSES: AttendanceStatus[] = [
+  AttendanceStatus.CLOCKED_OUT,
+  AttendanceStatus.PENDING_SUPERVISOR_APPROVAL,
+  AttendanceStatus.APPROVED_WITH_WARNING,
+  AttendanceStatus.SUPERVISOR_APPROVED,
+];
+
+function attendanceOccurrenceDateKey(occurrenceDate: Date): string {
+  return occurrenceDate.toISOString().slice(0, 10);
+}
 
 const ASSIGNMENT_SORT_FIELDS = [
   'assignedAt',
@@ -434,20 +449,41 @@ export class AssignmentsService {
       orderBy: { shift: { scheduledStartAt: 'asc' } },
     });
 
+    const completedOccurrenceKeys =
+      await this.completedOccurrenceKeysForOfficer(
+        organisationId,
+        officerId,
+        candidates.map((assignment) => assignment.id),
+      );
+
     const inProgress = candidates.find(
       (assignment) =>
         assignment.status === AssignmentStatus.IN_PROGRESS && assignment.shift,
     );
     if (inProgress) {
       const occurrence = this.occurrenceFor(inProgress, now, earlyMs);
-      return this.toResponse(inProgress, occurrence);
+      if (
+        occurrence &&
+        !completedOccurrenceKeys.has(
+          `${inProgress.id}:${occurrence.dateKey}`,
+        )
+      ) {
+        return this.toResponse(inProgress, occurrence);
+      }
     }
 
     for (const assignment of candidates) {
       const occurrence = this.occurrenceFor(assignment, now, earlyMs);
-      if (occurrence) {
-        return this.toResponse(assignment, occurrence);
+      if (!occurrence) {
+        continue;
       }
+      if (
+        completedOccurrenceKeys.has(`${assignment.id}:${occurrence.dateKey}`)
+      ) {
+        // Already clocked out for today's occurrence — wait until next day.
+        continue;
+      }
+      return this.toResponse(assignment, occurrence);
     }
 
     return null;
@@ -503,6 +539,13 @@ export class AssignmentsService {
       orderBy: { shift: { scheduledStartAt: 'asc' } },
     });
 
+    const completedOccurrenceKeys =
+      await this.completedOccurrenceKeysForOfficer(
+        organisationId,
+        officerId,
+        candidates.map((assignment) => assignment.id),
+      );
+
     const expanded = candidates.flatMap((assignment) => {
       const occurrences = expandOccurrences(
         this.toRecurrenceInput(assignment),
@@ -510,7 +553,14 @@ export class AssignmentsService {
         to,
         31,
       );
-      return occurrences.map((occurrence) => ({ assignment, occurrence }));
+      return occurrences
+        .filter(
+          (occurrence) =>
+            !completedOccurrenceKeys.has(
+              `${assignment.id}:${occurrence.dateKey}`,
+            ),
+        )
+        .map((occurrence) => ({ assignment, occurrence }));
     });
     expanded.sort(
       (a, b) => a.occurrence.startAt.getTime() - b.occurrence.startAt.getTime(),
@@ -532,61 +582,72 @@ export class AssignmentsService {
       organisationId,
     );
     const { page, limit, skip } = normalisePagination(query.page, query.limit);
-    const now = new Date();
     const from = query.from ? new Date(query.from) : undefined;
     const to = query.to ? new Date(query.to) : undefined;
 
-    const where: Prisma.AssignmentWhereInput = {
+    // Recurring assignments stay ASSIGNED/CONFIRMED after clock-out, so history
+    // is driven by completed attendance rows (one per occurrence), not assignment status.
+    const attendanceWhere: Prisma.AttendanceWhereInput = {
       organisationId,
       officerId,
-      shift: {
-        deletedAt: null,
-        ...(from || to
-          ? {
-              scheduledStartAt: {
-                ...(from ? { gte: from } : {}),
-                ...(to ? { lte: to } : {}),
-              },
-            }
-          : {}),
+      deletedAt: null,
+      clockOutServerAt: { not: null },
+      status: { in: COMPLETED_ATTENDANCE_STATUSES },
+      ...(from || to
+        ? {
+            occurrenceDate: {
+              ...(from ? { gte: from } : {}),
+              ...(to ? { lte: to } : {}),
+            },
+          }
+        : {}),
+      assignment: {
+        shift: { deletedAt: null },
       },
-      OR: [
-        {
-          status: {
-            in: [
-              AssignmentStatus.COMPLETED,
-              AssignmentStatus.CANCELLED,
-              AssignmentStatus.MISSED,
-              AssignmentStatus.REASSIGNED,
-            ],
-          },
-        },
-        {
-          status: {
-            in: [
-              AssignmentStatus.ASSIGNED,
-              AssignmentStatus.CONFIRMED,
-              AssignmentStatus.IN_PROGRESS,
-            ],
-          },
-          shift: { scheduledEndAt: { lt: now }, deletedAt: null },
-        },
-      ],
     };
 
-    const [items, total] = await Promise.all([
-      this.prisma.assignment.findMany({
-        where,
+    const [attendances, total] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: attendanceWhere,
         skip,
         take: limit,
-        orderBy: { shift: { scheduledStartAt: 'desc' } },
-        include: ASSIGNMENT_INCLUDE,
+        orderBy: { clockOutServerAt: 'desc' },
+        include: {
+          assignment: { include: ASSIGNMENT_INCLUDE },
+        },
       }),
-      this.prisma.assignment.count({ where }),
+      this.prisma.attendance.count({ where: attendanceWhere }),
     ]);
 
     return {
-      data: items.map((a) => this.toResponse(a)),
+      data: attendances.map((attendance) => {
+        const dateKey = attendanceOccurrenceDateKey(attendance.occurrenceDate);
+        const occurrence =
+          occurrenceOnDate(
+            this.toRecurrenceInput(attendance.assignment),
+            dateKey,
+          ) ??
+          ({
+            dateKey,
+            startAt:
+              attendance.clockInServerAt ??
+              attendance.assignment.shift?.scheduledStartAt ??
+              attendance.createdAt,
+            endAt:
+              attendance.clockOutServerAt ??
+              attendance.assignment.shift?.scheduledEndAt ??
+              attendance.updatedAt,
+          } satisfies ShiftOccurrence);
+
+        const response = this.toResponse(attendance.assignment, occurrence);
+        return {
+          ...response,
+          status: AssignmentStatus.COMPLETED,
+          completedAt:
+            attendance.clockOutServerAt?.toISOString() ??
+            response.completedAt,
+        };
+      }),
       meta: buildPaginationMeta(page, limit, total),
     };
   }
@@ -1159,6 +1220,33 @@ export class AssignmentsService {
       timezone: shift?.timezone,
       organisationTimezone: shift?.organisation?.timezone,
     };
+  }
+
+  private async completedOccurrenceKeysForOfficer(
+    organisationId: string,
+    officerId: string,
+    assignmentIds: string[],
+  ): Promise<Set<string>> {
+    if (assignmentIds.length === 0) {
+      return new Set();
+    }
+    const rows = await this.prisma.attendance.findMany({
+      where: {
+        organisationId,
+        officerId,
+        assignmentId: { in: assignmentIds },
+        deletedAt: null,
+        status: { in: COMPLETED_ATTENDANCE_STATUSES },
+        clockOutServerAt: { not: null },
+      },
+      select: { assignmentId: true, occurrenceDate: true },
+    });
+    return new Set(
+      rows.map(
+        (row) =>
+          `${row.assignmentId}:${attendanceOccurrenceDateKey(row.occurrenceDate)}`,
+      ),
+    );
   }
 
   private occurrenceFor(
