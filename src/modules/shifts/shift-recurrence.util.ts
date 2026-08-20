@@ -275,21 +275,38 @@ export function resolveActiveOrUpcomingToday(
   earlyMs: number,
   graceMs: number,
 ): ShiftOccurrence | null {
-  const inWindow = currentOccurrence(input, now, earlyMs, graceMs);
-  if (inWindow) {
-    return inWindow;
-  }
-  const today = todayOccurrence(input, now);
-  if (!today) {
+  const resolve = (candidate: ShiftRecurrenceInput) => {
+    const inWindow = currentOccurrence(candidate, now, earlyMs, graceMs);
+    if (inWindow) {
+      return inWindow;
+    }
+    const today = todayOccurrence(candidate, now);
+    if (!today) {
+      return null;
+    }
+    if (now.getTime() <= today.endAt.getTime() + graceMs) {
+      return today;
+    }
     return null;
+  };
+
+  const primary = resolve(input);
+  if (primary) {
+    return primary;
   }
-  if (now.getTime() <= today.endAt.getTime() + graceMs) {
-    return today;
+  if (!isRecurringShift(input.recurrenceType)) {
+    return resolve({
+      ...input,
+      recurrenceType: RecurrenceType.DAILY,
+    });
   }
   return null;
 }
 
-/** Clock-in: prefer an in-window occurrence (overnight), else today's calendar occurrence. */
+/** Clock-in: prefer an in-window occurrence (overnight), else today's calendar occurrence.
+ * One-off (NONE) shifts still project their start/end wall-clock times onto today so
+ * standing post assignments keep working every day without recreating the shift.
+ */
 export function resolveClockInOccurrence(
   input: ShiftRecurrenceInput,
   now: Date,
@@ -297,11 +314,24 @@ export function resolveClockInOccurrence(
   graceMs: number,
   clientDateKey?: string | null,
 ): ShiftOccurrence | null {
-  return (
-    occurrenceFromClientDate(input, now, clientDateKey) ??
-    currentOccurrence(input, now, earlyMs, graceMs) ??
-    todayOccurrence(input, now)
-  );
+  const resolve = (candidate: ShiftRecurrenceInput) =>
+    occurrenceFromClientDate(candidate, now, clientDateKey) ??
+    currentOccurrence(candidate, now, earlyMs, graceMs) ??
+    todayOccurrence(candidate, now);
+
+  const primary = resolve(input);
+  if (primary) {
+    return primary;
+  }
+
+  if (!isRecurringShift(input.recurrenceType)) {
+    return resolve({
+      ...input,
+      recurrenceType: RecurrenceType.DAILY,
+    });
+  }
+
+  return null;
 }
 
 export function recurrencesOverlap(

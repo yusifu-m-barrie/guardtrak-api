@@ -79,6 +79,25 @@ describe('shift-recurrence.util', () => {
     expect(occurrence?.dateKey).toBe('2026-08-18');
   });
 
+  it('projects NONE one-off wall-clock times onto today for clock-in', () => {
+    const oneOff = {
+      recurrenceType: RecurrenceType.NONE,
+      scheduledStartAt: new Date('2026-08-15T14:00:00.000Z'),
+      scheduledEndAt: new Date('2026-08-15T20:27:00.000Z'),
+      timezone: 'Africa/Freetown',
+    };
+    const now = new Date('2026-08-20T16:30:00.000Z');
+    const occ = resolveClockInOccurrence(
+      oneOff,
+      now,
+      2 * 60 * 60_000,
+      15 * 60_000,
+    );
+    expect(occ?.dateKey).toBe('2026-08-20');
+    expect(occ?.startAt.toISOString()).toBe('2026-08-20T14:00:00.000Z');
+    expect(occ?.endAt.toISOString()).toBe('2026-08-20T20:27:00.000Z');
+  });
+
   it('resolves overnight DAILY duty (17:00–00:00) on the following morning', () => {
     const overnight = {
       recurrenceType: RecurrenceType.DAILY,
