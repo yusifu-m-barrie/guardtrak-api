@@ -79,6 +79,43 @@ describe('shift-recurrence.util', () => {
     expect(occurrence?.dateKey).toBe('2026-08-18');
   });
 
+  it('resolves overnight DAILY duty (17:00–00:00) on the following morning', () => {
+    const overnight = {
+      recurrenceType: RecurrenceType.DAILY,
+      scheduledStartAt: new Date('2026-08-20T17:00:00.000Z'),
+      scheduledEndAt: new Date('2026-08-21T00:00:00.000Z'),
+      timezone: 'Africa/Freetown',
+    };
+    const duringShift = new Date('2026-08-20T19:30:00.000Z');
+    const afterMidnight = new Date('2026-08-20T23:30:00.000Z');
+    const nextMorningStillOnDuty = new Date('2026-08-20T23:45:00.000Z');
+
+    expect(
+      resolveClockInOccurrence(overnight, duringShift, 30 * 60_000, 15 * 60_000)
+        ?.dateKey,
+    ).toBe('2026-08-20');
+    expect(
+      resolveClockInOccurrence(
+        overnight,
+        afterMidnight,
+        30 * 60_000,
+        15 * 60_000,
+      )?.dateKey,
+    ).toBe('2026-08-20');
+    expect(
+      currentOccurrence(
+        overnight,
+        nextMorningStillOnDuty,
+        30 * 60_000,
+        15 * 60_000,
+      )?.dateKey,
+    ).toBe('2026-08-20');
+
+    const nextDay = occurrenceOnDate(overnight, '2026-08-21');
+    expect(nextDay?.startAt.toISOString()).toBe('2026-08-21T17:00:00.000Z');
+    expect(nextDay?.endAt.toISOString()).toBe('2026-08-22T00:00:00.000Z');
+  });
+
   it('resolves a DAILY occurrence on the calendar day even before the duty window', () => {
     const now = new Date('2026-08-18T12:00:00.000Z'); // 08:00 America/New_York
     expect(

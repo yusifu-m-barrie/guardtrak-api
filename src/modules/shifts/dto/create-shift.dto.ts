@@ -75,7 +75,12 @@ export class CreateShiftDto {
   @IsBoolean()
   asDraft?: boolean;
 
-  @ApiPropertyOptional({ enum: RecurrenceType, default: RecurrenceType.NONE })
+  @ApiPropertyOptional({
+    enum: RecurrenceType,
+    default: RecurrenceType.DAILY,
+    description:
+      'Defaults to DAILY so start/end times repeat every day (officer routine). Use NONE only for a single calendar date.',
+  })
   @IsOptional()
   @IsEnum(RecurrenceType)
   recurrenceType?: RecurrenceType;

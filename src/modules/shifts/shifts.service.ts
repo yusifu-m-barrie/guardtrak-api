@@ -792,7 +792,7 @@ export class ShiftsService {
     recurrenceDaysOfWeek?: number[];
     timezone?: string | null;
   }) {
-    const recurrenceType = dto.recurrenceType ?? RecurrenceType.NONE;
+    const recurrenceType = dto.recurrenceType ?? RecurrenceType.DAILY;
     const recurrenceDaysOfWeek = normaliseDaysOfWeek(dto.recurrenceDaysOfWeek);
     const timezone = trimOrUndefined(dto.timezone) ?? null;
     if (timezone && !isValidTimeZone(timezone)) {
