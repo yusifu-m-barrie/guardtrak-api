@@ -96,7 +96,10 @@ describe('ReportsService attendance-hour consistency', () => {
     const [arg] = prisma.attendance.findMany.mock.calls[0] as [
       {
         where: {
-          clockInServerAt: { gte: Date; lte: Date };
+          OR: Array<{
+            clockInServerAt?: { gte: Date; lte: Date };
+            occurrenceDate?: { gte: Date; lte: Date };
+          }>;
           officerId?: string;
           siteId?: string;
           shiftId?: string;
@@ -234,10 +237,14 @@ describe('ReportsService attendance-hour consistency', () => {
     });
 
     const where = attendanceQueryArg().where;
-    expect(where.clockInServerAt.gte.toISOString()).toBe(
+    const clockInBranch = where.OR.find(
+      (branch: { clockInServerAt?: { gte: Date; lte: Date } }) =>
+        branch.clockInServerAt,
+    );
+    expect(clockInBranch.clockInServerAt.gte.toISOString()).toBe(
       '2026-08-01T04:00:00.000Z',
     );
-    expect(where.clockInServerAt.lte.toISOString()).toBe(
+    expect(clockInBranch.clockInServerAt.lte.toISOString()).toBe(
       '2026-09-01T03:59:59.999Z',
     );
   });
@@ -252,10 +259,14 @@ describe('ReportsService attendance-hour consistency', () => {
     });
 
     const where = attendanceQueryArg().where;
-    expect(where.clockInServerAt.gte.toISOString()).toBe(
+    const clockInBranch = where.OR.find(
+      (branch: { clockInServerAt?: { gte: Date; lte: Date } }) =>
+        branch.clockInServerAt,
+    );
+    expect(clockInBranch.clockInServerAt.gte.toISOString()).toBe(
       '2026-08-01T00:00:00.000Z',
     );
-    expect(where.clockInServerAt.lte.toISOString()).toBe(
+    expect(clockInBranch.clockInServerAt.lte.toISOString()).toBe(
       '2026-08-31T23:59:59.999Z',
     );
   });

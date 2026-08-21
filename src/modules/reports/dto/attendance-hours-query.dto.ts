@@ -96,7 +96,7 @@ export class AttendanceHoursQueryDto {
 
   @ApiPropertyOptional({
     description:
-      'When true, only SUPERVISOR_APPROVED and APPROVED_WITH_WARNING records (payroll-ready)',
+      'When true, only SUPERVISOR_APPROVED and APPROVED_WITH_WARNING. Default false includes all completed clock-outs (recommended for payroll hours).',
   })
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => {

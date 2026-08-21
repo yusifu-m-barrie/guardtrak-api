@@ -21,6 +21,7 @@ import {
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
 import { normalisePagination } from '../../common/utils/pagination.util';
 import {
+  dateKeyToUtcDate,
   endOfZonedDay,
   parseDateKey,
   startOfZonedDay,
@@ -194,11 +195,35 @@ export class ReportsService {
     }
 
     const approvedOnly = query.approvedOnly === true;
+    const occurrenceFromKey = (() => {
+      const parsed = parseDateKey(query.from);
+      if (!parsed) {
+        return zonedDateKey(fromDate, timeZone);
+      }
+      return `${parsed.year}-${String(parsed.month).padStart(2, '0')}-${String(parsed.day).padStart(2, '0')}`;
+    })();
+    const occurrenceToKey = (() => {
+      const parsed = parseDateKey(query.to);
+      if (!parsed) {
+        return zonedDateKey(toDate, timeZone);
+      }
+      return `${parsed.year}-${String(parsed.month).padStart(2, '0')}-${String(parsed.day).padStart(2, '0')}`;
+    })();
     const where: Prisma.AttendanceWhereInput = {
       organisationId,
       deletedAt: null,
-      clockInServerAt: { gte: fromDate, lte: toDate },
       clockOutServerAt: { not: null },
+      // Match either clock-in time in range OR shift occurrence calendar date
+      // so overnight / timezone-boundary shifts still appear for payroll.
+      OR: [
+        { clockInServerAt: { gte: fromDate, lte: toDate } },
+        {
+          occurrenceDate: {
+            gte: dateKeyToUtcDate(occurrenceFromKey),
+            lte: dateKeyToUtcDate(occurrenceToKey),
+          },
+        },
+      ],
       ...(officerScope ? { officerId: { in: officerScope } } : {}),
       ...(officerIds.length === 1
         ? { officerId: officerIds[0] }
