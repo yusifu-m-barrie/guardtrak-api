@@ -2,7 +2,6 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
-  IsBoolean,
   IsEnum,
   IsIn,
   IsInt,
@@ -96,16 +95,20 @@ export class AttendanceHoursQueryDto {
 
   @ApiPropertyOptional({
     description:
-      'When true, only SUPERVISOR_APPROVED and APPROVED_WITH_WARNING. Default false includes all completed clock-outs (recommended for payroll hours).',
+      'When true, only SUPERVISOR_APPROVED and APPROVED_WITH_WARNING. Default false includes all completed clock-outs (recommended for payroll hours). Pass as query string true/false — do not rely on JS Boolean() coercion.',
+    enum: ['true', 'false', '1', '0'],
   })
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => {
-    if (value === true || value === 'true' || value === '1') return true;
-    if (value === false || value === 'false' || value === '0') return false;
-    return undefined;
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    // Keep as string so enableImplicitConversion cannot turn "false" into true
+    // (Boolean("false") === true).
+    return String(value).trim().toLowerCase();
   })
-  @IsBoolean()
-  approvedOnly?: boolean;
+  @IsIn(['true', 'false', '1', '0'])
+  approvedOnly?: string;
 
   @ApiPropertyOptional({
     enum: ATTENDANCE_HOURS_BASIS,

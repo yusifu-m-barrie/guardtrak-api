@@ -194,7 +194,8 @@ export class ReportsService {
       return this.emptyAttendanceHoursResponse(query, reportType, hoursBasis);
     }
 
-    const approvedOnly = query.approvedOnly === true;
+    const approvedOnly =
+      query.approvedOnly === 'true' || query.approvedOnly === '1';
     const occurrenceFromKey = (() => {
       const parsed = parseDateKey(query.from);
       if (!parsed) {
@@ -419,7 +420,8 @@ export class ReportsService {
         shiftId: query.shiftId ?? null,
         status: query.status ?? null,
         supervisorId: query.supervisorId ?? null,
-        approvedOnly: query.approvedOnly === true,
+        approvedOnly:
+          query.approvedOnly === 'true' || query.approvedOnly === '1',
         hoursBasis,
       },
       reportType,
