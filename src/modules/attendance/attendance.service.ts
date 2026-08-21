@@ -996,10 +996,8 @@ export class AttendanceService {
 
     const shift = assignment.shift;
     const site = shift.site;
-    const configuredEarlyMinutes =
-      this.configService.get<number>('attendance.clockInEarlyMinutes') ?? 0;
-    // Never allow a negative window; product default is exact scheduled start.
-    const earlyMinutes = Math.max(0, configuredEarlyMinutes);
+    // Product rule: clock-in opens at the scheduled start only (no early window).
+    const earlyMinutes = 0;
     const currentWindowMs = 2 * 60 * 60_000;
     const geofenceEnabled = this.isGeofenceEnforcementEnabled();
     const recurrenceInput = {
