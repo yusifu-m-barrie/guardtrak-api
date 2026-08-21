@@ -216,7 +216,7 @@ describe('AttendanceService clock-in/out', () => {
       {
         get: (key: string): boolean | number | undefined => {
           if (key === 'attendance.geofenceEnabled') return geofenceEnabled;
-          if (key === 'attendance.clockInEarlyMinutes') return 30;
+          if (key === 'attendance.clockInEarlyMinutes') return 0;
           if (key === 'attendance.deviceTimeToleranceMinutes') return 10;
           if (key === 'attendance.idempotencyTtlSeconds') return 86_400;
           return undefined;
@@ -296,8 +296,21 @@ describe('AttendanceService clock-in/out', () => {
     );
   });
 
-  it('rejects clock-in before the allowed assignment window', async () => {
+  it('rejects clock-in before the scheduled start time', async () => {
     jest.setSystemTime(new Date('2026-08-17T12:00:00.000Z'));
+    await expectCode(
+      service.clockIn(
+        officerUser(),
+        clockInDto({ deviceTimestamp: new Date().toISOString() }),
+        ctx,
+      ),
+      ErrorCode.ATTENDANCE_CLOCK_IN_TOO_EARLY,
+    );
+  });
+
+  it('rejects clock-in one minute before scheduled start', async () => {
+    // Occurrence starts 18:00 UTC for this fixture day.
+    jest.setSystemTime(new Date('2026-08-17T17:59:00.000Z'));
     await expectCode(
       service.clockIn(
         officerUser(),

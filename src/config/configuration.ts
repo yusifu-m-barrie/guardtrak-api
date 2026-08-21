@@ -154,8 +154,9 @@ export default (): GuardTrakConfig => {
       ),
     },
     attendance: {
+      // Officers may only clock in at/after scheduled start (0 = no early window).
       clockInEarlyMinutes: Number.parseInt(
-        process.env.ATTENDANCE_CLOCK_IN_EARLY_MINUTES ?? '30',
+        process.env.ATTENDANCE_CLOCK_IN_EARLY_MINUTES ?? '0',
         10,
       ),
       deviceTimeToleranceMinutes: Number.parseInt(

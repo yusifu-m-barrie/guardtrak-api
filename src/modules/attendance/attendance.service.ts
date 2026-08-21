@@ -996,8 +996,10 @@ export class AttendanceService {
 
     const shift = assignment.shift;
     const site = shift.site;
-    const earlyMinutes =
-      this.configService.get<number>('attendance.clockInEarlyMinutes') ?? 30;
+    const configuredEarlyMinutes =
+      this.configService.get<number>('attendance.clockInEarlyMinutes') ?? 0;
+    // Never allow a negative window; product default is exact scheduled start.
+    const earlyMinutes = Math.max(0, configuredEarlyMinutes);
     const currentWindowMs = 2 * 60 * 60_000;
     const geofenceEnabled = this.isGeofenceEnforcementEnabled();
     const recurrenceInput = {
@@ -1009,6 +1011,8 @@ export class AttendanceService {
       timezone: shift.timezone,
       organisationTimezone: shift.organisation?.timezone,
     };
+    // Resolve today's occurrence up to 2h before start (for overnight shifts),
+    // but the clock-in gate below still enforces scheduled start (+ optional early minutes).
     const dutyWindowMs = Math.max(earlyMinutes * 60_000, currentWindowMs);
     const occurrence = resolveClockInOccurrence(
       recurrenceInput,
@@ -1056,7 +1060,9 @@ export class AttendanceService {
 
     if (serverNow < earliest) {
       throw new AppException(
-        'Clock-in is too early for this shift',
+        earlyMinutes === 0
+          ? 'Clock-in opens at the scheduled shift start time'
+          : 'Clock-in is too early for this shift',
         HttpStatus.CONFLICT,
         ErrorCode.ATTENDANCE_CLOCK_IN_TOO_EARLY,
       );
